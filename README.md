@@ -252,7 +252,7 @@ You can request a smaller square size to reduce local generation cost:
 python3 generate_icons.py --generation-size 768
 ```
 
-The runner accepts source sizes from 256 through 2048, in multiples of 16. Lower resolutions can be faster, but may reduce small structural detail.
+The runner accepts generation sizes from 256 through 2048, in multiples of 16. Lower resolutions can be faster, but may reduce small structural detail.
 
 The target review size can be changed separately:
 
