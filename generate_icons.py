@@ -10,7 +10,7 @@ Run beside prompts.json:
     python3 generate_icons.py
 
 No reference images, model downloads, or repository writes.
-The external icon_api_call.json workflow performs BiRefNet background removal and alpha joining.
+The external workflow.json workflow performs BiRefNet background removal and alpha joining.
 The only third-party dependency used by this runner is Pillow, also used by the original runner.
 """
 from __future__ import annotations
@@ -40,8 +40,8 @@ DEFAULT_SEEDS = (101, 102, 103)
 DEFAULT_MODEL = "flux-2-klein-4b.safetensors"
 DEFAULT_COMFY_URL = "http://127.0.0.1:8188"
 # The ComfyUI API graph is intentionally kept in a separate JSON file.
-# Put icon_api_call.json beside this script, or pass --workflow /path/to/file.json.
-DEFAULT_WORKFLOW = SCRIPT_DIR / "icon_api_call.json"
+# Put workflow.json beside this script, or pass --workflow /path/to/file.json.
+DEFAULT_WORKFLOW = SCRIPT_DIR / "workflow.json"
 
 
 class IconError(RuntimeError):
@@ -151,7 +151,7 @@ def validate_graph(graph: Any) -> dict[str, Any]:
     if not isinstance(graph, dict) or not graph:
         raise IconError("Workflow must be a nonempty API-format JSON object.")
     if "nodes" in graph or "links" in graph:
-        raise IconError("This is a visual-editor workflow, not an API export. Use ComfyUI API-format JSON such as icon_api_call.json.")
+        raise IconError("This is a visual-editor workflow, not an API export. Use ComfyUI API-format JSON such as workflow.json.")
     for node_id, node in graph.items():
         if not isinstance(node_id, str) or not isinstance(node, dict):
             raise IconError("Invalid API graph: expected string node IDs and node objects.")
@@ -255,7 +255,7 @@ def validate_recipe(graph: dict[str, Any], nodes: dict[str, str], allow_nonstand
     expected = {"model": DEFAULT_MODEL, "text_encoder": "qwen_3_4b.safetensors", "text_encoder_type": "flux2", "vae": "flux2-vae.safetensors", "steps": 4, "cfg": 1, "sampler": "euler"}
     problems = [f"{key}={recipe[key]!r}, expected {value!r}" for key, value in expected.items() if recipe[key] != value]
     if problems and not allow_nonstandard:
-        raise IconError("Workflow is not the four-step distilled recipe. " + "; ".join(problems) + ". Fix icon_api_call.json, or deliberately use --allow-nonstandard-workflow.")
+        raise IconError("Workflow is not the four-step distilled recipe. " + "; ".join(problems) + ". Fix workflow.json, or deliberately use --allow-nonstandard-workflow.")
     if problems:
         print("WARNING: explicitly allowing a nonstandard recipe: " + "; ".join(problems), flush=True)
     return recipe
@@ -275,12 +275,12 @@ def build_workflow(template: dict[str, Any], nodes: dict[str, str], entry: dict[
     return graph
 
 
-def fingerprint(graph: dict[str, Any], nodes: dict[str, str], preview_size: int) -> str:
+def fingerprint(graph: dict[str, Any], nodes: dict[str, str], target_size: int) -> str:
     stable = copy.deepcopy(graph)
     for node in stable.values():
         node.pop("_meta", None)
     set_input(stable, nodes["save"], "filename_prefix", "<candidate-output>")
-    return json_hash({"workflow": stable, "preview_size": preview_size, "resize": "Pillow-LANCZOS"})
+    return json_hash({"workflow": stable, "target_size": target_size, "resize": "Pillow-LANCZOS"})
 
 
 def request_json(url: str, *, payload: Any = None, timeout: float = 30) -> Any:
@@ -374,15 +374,13 @@ class ComfyClient:
             raise IconError("ComfyUI finished but the selected Save Image node has no output.")
         return None
 
-    def wait(self, prompt_id: str, save_id: str, timeout: float, poll: float) -> dict[str, Any]:
+    def wait(self, prompt_id: str, save_id: str, poll: float) -> dict[str, Any]:
         start = time.monotonic()
-        deadline = start + timeout
         next_notice = start + 15
         consecutive_errors = 0
-        while time.monotonic() < deadline:
-            remaining = deadline - time.monotonic()
+        while True:
             try:
-                entry = self.history(prompt_id, timeout=min(15, max(0.1, remaining)))
+                entry = self.history(prompt_id, timeout=15)
                 consecutive_errors = 0
             except IconError:
                 consecutive_errors += 1
@@ -393,12 +391,9 @@ class ComfyClient:
             if outputs is not None:
                 return outputs
             if time.monotonic() >= next_notice:
-                print(f"  Waiting for ComfyUI: {time.monotonic() - start:.0f}s elapsed (limit {timeout:g}s).", flush=True)
+                print(f"  Waiting for ComfyUI: {time.monotonic() - start:.0f}s elapsed.", flush=True)
                 next_notice = time.monotonic() + 15
-            remaining = deadline - time.monotonic()
-            if remaining > 0:
-                time.sleep(min(poll, remaining))
-        raise TimeoutError(f"Job {prompt_id} exceeded the {timeout:g}-second wait limit. The batch stops here.")
+            time.sleep(poll)
 
     def cancel_own(self, prompt_id: str) -> str:
         """Best effort only: remove this queued ID, interrupt only if it is running."""
@@ -471,16 +466,16 @@ def candidate_name(filename: str, variant: int) -> str:
     return f"{Path(filename).stem}_{variant}.png"
 
 
-def candidate_paths(root: Path, name: str, preview_size: int) -> dict[str, Path]:
-    return {"source": root / "source" / name, "preview": root / f"preview_{preview_size}" / name, "meta": root / "metadata" / (Path(name).stem + ".json")}
+def candidate_paths(root: Path, name: str, target_size: int) -> dict[str, Path]:
+    return {"source": root / "source" / name, "preview": root / f"preview_{target_size}" / name, "meta": root / "metadata" / (Path(name).stem + ".json")}
 
 
 def finalize_candidate(meta: dict[str, Any], paths: dict[str, Path], args: argparse.Namespace) -> dict[str, Any]:
-    source_info = inspect_image(paths["source"], args.source_size)
+    source_info = inspect_image(paths["source"], args.generation_size)
     if args.require_alpha and not source_info["real_transparency"]:
         raise IconError("Generated source is opaque. --require-alpha requires genuine transparent pixels from the external API workflow.")
-    make_preview(paths["source"], paths["preview"], args.production_size)
-    meta.update({"phase": "complete", "status": "rendered-unreviewed", "qa_status": "needs-visual-review", "finished_at": utc_now(), "source": source_info, "preview": inspect_image(paths["preview"], args.production_size), "source_sha256": sha256_file(paths["source"]), "preview_sha256": sha256_file(paths["preview"]), "source_path": str(paths["source"]), "preview_path": str(paths["preview"])})
+    make_preview(paths["source"], paths["preview"], args.target_size)
+    meta.update({"phase": "complete", "status": "rendered-unreviewed", "qa_status": "needs-visual-review", "finished_at": utc_now(), "source": source_info, "preview": inspect_image(paths["preview"], args.target_size), "source_sha256": sha256_file(paths["source"]), "preview_sha256": sha256_file(paths["preview"]), "source_path": str(paths["source"]), "preview_path": str(paths["preview"])})
     save_json(paths["meta"], meta)
     return meta
 
@@ -498,10 +493,10 @@ def download_and_finalize(client: ComfyClient, outputs: dict[str, Any], nodes: d
 
 def generate_candidate(args: argparse.Namespace, client: ComfyClient, template: dict[str, Any], nodes: dict[str, str], entry: dict[str, Any], seed: int, variant: int, run_id: str) -> dict[str, Any]:
     name = candidate_name(entry["filename"], variant)
-    paths = candidate_paths(args.output_root, name, args.production_size)
+    paths = candidate_paths(args.output_root, name, args.target_size)
     prefix = "icon_generator/" + Path(name).stem + "_" + run_id[-8:]
-    graph = build_workflow(template, nodes, entry, seed, args.source_size, prefix)
-    key = fingerprint(graph, nodes, args.production_size)
+    graph = build_workflow(template, nodes, entry, seed, args.generation_size, prefix)
+    key = fingerprint(graph, nodes, args.target_size)
     old = load_json(paths["meta"]) if paths["meta"].exists() else None
     if not args.overwrite and (old is not None or paths["source"].exists() or paths["preview"].exists()):
         if not isinstance(old, dict) or old.get("fingerprint") != key:
@@ -539,7 +534,7 @@ def generate_candidate(args: argparse.Namespace, client: ComfyClient, template: 
         meta.update({"phase": "queued", "prompt_id": prompt_id})
         save_json(paths["meta"], meta)
         print(f"  ComfyUI prompt_id: {prompt_id}", flush=True)
-        outputs = client.wait(prompt_id, nodes["save"], args.timeout, args.poll_seconds)
+        outputs = client.wait(prompt_id, nodes["save"], args.poll_seconds)
         meta["generation_wait_seconds"] = round(time.monotonic() - start, 3)
         result = download_and_finalize(client, outputs, nodes, meta, paths, args)
         result["action"] = "generated"
@@ -549,7 +544,7 @@ def generate_candidate(args: argparse.Namespace, client: ComfyClient, template: 
         return result
     except (KeyboardInterrupt, Exception) as exc:
         cancel_note = None
-        if prompt_id and (isinstance(exc, (KeyboardInterrupt, TimeoutError)) or meta.get("phase") == "queued"):
+        if prompt_id and (isinstance(exc, KeyboardInterrupt) or meta.get("phase") == "queued"):
             cancel_note = client.cancel_own(prompt_id)
             print("  " + cancel_note, flush=True)
         meta.update({"phase": "interrupted" if isinstance(exc, KeyboardInterrupt) else "failed", "status": "failed", "error": str(exc) or type(exc).__name__, "elapsed_seconds": round(time.monotonic() - start, 3), "updated_at": utc_now()})
@@ -561,20 +556,20 @@ def generate_candidate(args: argparse.Namespace, client: ComfyClient, template: 
         raise
 
 
-def write_gallery(root: Path, entries: list[dict[str, Any]], seeds: list[int], preview_size: int) -> None:
+def write_gallery(root: Path, entries: list[dict[str, Any]], seeds: list[int], target_size: int) -> None:
     parts = ["<!doctype html><html lang='en'><meta charset='utf-8'><title>Icon candidates</title>", "<style>body{font:16px system-ui;margin:28px;background:#eceff1;color:#16202b}section{margin:24px 0;padding:20px;background:white;border-radius:10px}.row{display:flex;gap:20px;flex-wrap:wrap}figure{margin:0;width:240px}img{width:220px;height:220px;object-fit:contain;background:repeating-conic-gradient(#eee 0% 25%,white 0% 50%) 50%/20px 20px}.small{width:120px;height:120px}code{overflow-wrap:anywhere}figcaption{margin:8px 0;font-size:14px}</style>", "<h1>Icon candidates — not automatically approved</h1><p>Click an image for the exact generated source. Check shape, material, matching pairs, borders and small-size readability. White pixels are not transparency.</p>"]
     for entry in entries:
         figures = []
         for index, seed in enumerate(seeds, 1):
             name = candidate_name(entry["filename"], index)
-            paths = candidate_paths(root, name, preview_size)
+            paths = candidate_paths(root, name, target_size)
             if not paths["meta"].exists() or not paths["source"].exists():
                 continue
             meta = load_json(paths["meta"])
             if meta.get("phase") != "complete":
                 continue
             source = "source/" + urllib.parse.quote(name)
-            preview = f"preview_{preview_size}/" + urllib.parse.quote(name)
+            preview = f"preview_{target_size}/" + urllib.parse.quote(name)
             figures.append(f"<figure><a href='{source}'><img src='{source}' alt='{html.escape(name)}'></a><figcaption><code>{html.escape(name)}</code><br>Seed {meta.get('seed', seed)} · Needs review</figcaption><img class='small' src='{preview}' alt='Small-size preview'></figure>")
         if figures:
             parts.append(f"<section><h2>{html.escape(entry.get('display_name', entry['filename']))}</h2><div class='row'>{''.join(figures)}</div></section>")
@@ -608,49 +603,46 @@ def print_startup_header() -> None:
 
 def print_argument_summary(args: argparse.Namespace) -> None:
     rows = [
-        ("prompt_file", args.prompt_file),
-        ("--workflow", args.workflow),
-        ("--comfy-url", args.comfy_url),
-        ("--seeds", args.seeds),
-        ("--seed", args.seed),
-        ("--only", args.only),
-        ("--only-status", args.only_status),
-        ("--limit", args.limit),
-        ("--source-size", args.source_size),
-        ("--production-size", args.production_size),
-        ("--timeout", args.timeout),
-        ("--poll-seconds", args.poll_seconds),
-        ("--overwrite", args.overwrite),
-        ("--retry-failed", args.retry_failed),
-        ("--require-alpha", args.require_alpha),
-        ("--allow-nonstandard-workflow", args.allow_nonstandard_workflow),
-        ("--dry-run", args.dry_run),
-        ("--check-server", args.check_server),
-        ("output directory (fixed)", args.output_root),
+        ("prompt_file", args.prompt_file, "Prompt definitions JSON"),
+        ("--workflow", args.workflow, "ComfyUI API workflow JSON"),
+        ("--comfy-url", args.comfy_url, "ComfyUI server address"),
+        ("--seeds", args.seeds, "One candidate per seed"),
+        ("--only", args.only, "Generate only named icons"),
+        ("--only-status", args.only_status, "Filter by migration_status"),
+        ("--limit", args.limit, "Maximum icons to process"),
+        ("--generation-size", args.generation_size, "Model generation size in pixels"),
+        ("--target-size", args.target_size, "Local review image size in pixels"),
+        ("--poll-seconds", args.poll_seconds, "Seconds between status checks"),
+        ("--overwrite", args.overwrite, "Replace matching existing candidates"),
+        ("--retry-failed", args.retry_failed, "Retry recorded failed candidates"),
+        ("--require-alpha", args.require_alpha, "Require real transparent pixels"),
+        ("--allow-nonstandard-workflow", args.allow_nonstandard_workflow, "Allow non-default model/settings"),
+        ("--dry-run", args.dry_run, "Validate plan without generating"),
+        ("--check-server", args.check_server, "Validate ComfyUI without generating"),
+        ("output directory", args.output_root, "Fixed generated output folder"),
     ]
-    width = max(len(name) for name, _ in rows)
+    option_width = max(len(name) for name, _, _ in rows)
+    value_width = max(12, min(52, max(len(format_argument_value(value)) for _, value, _ in rows)))
     print("Arguments:")
-    for name, value in rows:
-        print(f"  {name:<{width}}  {format_argument_value(value)}")
+    print(f"  {'OPTION':<{option_width}}  {'VALUE':<{value_width}}  DESCRIPTION")
+    for name, value, description in rows:
+        rendered = format_argument_value(value)
+        print(f"  {name:<{option_width}}  {rendered:<{value_width}}  {description}")
     print()
     print("-" * 72)
     print()
 
-
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate three independent FLUX cartoon candidates per icon; never install into game assets.")
     parser.add_argument("prompt_file", nargs="?", type=Path, default=SCRIPT_DIR / "prompts.json", help="Prompt JSON array; defaults to prompts.json beside this script.")
-    parser.add_argument("--workflow", type=Path, default=DEFAULT_WORKFLOW, help="ComfyUI API-format workflow JSON. Default: icon_api_call.json beside this script.")
+    parser.add_argument("--workflow", type=Path, default=DEFAULT_WORKFLOW, help="ComfyUI API-format workflow JSON. Default: workflow.json beside this script.")
     parser.add_argument("--comfy-url", default=DEFAULT_COMFY_URL)
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("--seeds", type=int, nargs="+", default=None, help="Seeds, in suffix order. Default: 101 102 103. One image per supplied seed.")
-    group.add_argument("--seed", type=int, help="Legacy single-seed option; deliberately generates only one candidate per icon.")
+    parser.add_argument("--seeds", type=int, nargs="+", default=None, help="Seed values in candidate suffix order. Default: 101 102 103. One candidate is generated per seed.")
     parser.add_argument("--only", nargs="+", help="Select exact filename, filename stem, or semantic key; e.g. --only frostweave_gloves health_potion")
     parser.add_argument("--only-status", nargs="+", help="Optional migration_status filter. Default includes every manifest entry, including complete.")
     parser.add_argument("--limit", type=int, help="Maximum number of matching ICONS, not images. --limit 1 makes three candidates by default.")
-    parser.add_argument("--source-size", type=int, default=1024)
-    parser.add_argument("--production-size", "--preview-size", dest="production_size", type=int, default=120, help="Local preview size; these are unreviewed previews, NOT installed production assets.")
-    parser.add_argument("--timeout", type=float, default=300, help="Maximum wait per submitted image in seconds (default 300). Stop the batch on timeout.")
+    parser.add_argument("--generation-size", dest="generation_size", type=int, default=1024, help="Square pixel size sent to the image model. Default: 1024.")
+    parser.add_argument("--target-size", dest="target_size", type=int, default=120, help="Square pixel size of the local review image. Default: 120.")
     parser.add_argument("--poll-seconds", type=float, default=1.0)
     parser.add_argument("--overwrite", action="store_true", help="Explicitly regenerate and replace selected candidate files; never touches repository paths.")
     parser.add_argument("--retry-failed", action="store_true", help="Retry recorded failed/lost jobs after checking that they are not still active. Complete matching candidates are skipped.")
@@ -662,13 +654,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.limit is not None and args.limit < 1:
         parser.error("--limit must be at least 1.")
-    if args.source_size < 256 or args.source_size > 2048 or args.source_size % 16:
-        parser.error("--source-size must be a multiple of 16 between 256 and 2048.")
-    if not 1 <= args.production_size <= 2048:
-        parser.error("--production-size must be from 1 through 2048.")
-    if not math.isfinite(args.timeout) or args.timeout <= 0 or not math.isfinite(args.poll_seconds) or args.poll_seconds <= 0:
-        parser.error("--timeout and --poll-seconds must be positive finite numbers.")
-    args.seeds = validate_seeds([args.seed] if args.seed is not None else (args.seeds or list(DEFAULT_SEEDS)))
+    if args.generation_size < 256 or args.generation_size > 2048 or args.generation_size % 16:
+        parser.error("--generation-size must be a multiple of 16 between 256 and 2048.")
+    if not 1 <= args.target_size <= 2048:
+        parser.error("--target-size must be from 1 through 2048.")
+    if not math.isfinite(args.poll_seconds) or args.poll_seconds <= 0:
+        parser.error("--poll-seconds must be a positive finite number.")
+    args.seeds = validate_seeds(args.seeds or list(DEFAULT_SEEDS))
     parts = urllib.parse.urlsplit(args.comfy_url)
     if parts.scheme not in {"http", "https"} or not parts.hostname or parts.query or parts.fragment or parts.username or parts.password:
         parser.error("--comfy-url must be a plain HTTP(S) server address without credentials, query or fragment.")
@@ -699,8 +691,8 @@ def main(argv: list[str] | None = None) -> int:
         jobs = [(entry, index, seed) for entry in entries for index, seed in enumerate(args.seeds, 1)]
         # Exercise linked prompt/size/seed setters before talking to the server.
         if entries:
-            build_workflow(template, nodes, entries[0], args.seeds[0], args.source_size, "icon_generator/preflight")
-        print(f"Model: {recipe['model']}\nSteps / CFG: {recipe['steps']} / {recipe['cfg']}\nIcons: {len(entries)}; candidate images: {len(jobs)}", flush=True)
+            build_workflow(template, nodes, entries[0], args.seeds[0], args.generation_size, "icon_generator/preflight")
+        print(f"Model: {recipe['model']}\nSteps / CFG: {recipe['steps']} / {recipe['cfg']}\nGeneration / target size: {args.generation_size} / {args.target_size}\nIcons: {len(entries)}; candidate images: {len(jobs)}", flush=True)
         print("Images are unreviewed candidates. Background removal is performed only if the external workflow contains it; no game-asset replacement is performed.", flush=True)
         if args.dry_run:
             for entry in entries:
@@ -732,7 +724,7 @@ def main(argv: list[str] | None = None) -> int:
     lock.write(json.dumps({"pid": os.getpid(), "run_id": run_id, "started_at": utc_now()}))
     lock.close()
     reports = args.output_root / "reports"
-    run = {"runner_version": VERSION, "run_id": run_id, "started_at": utc_now(), "prompt_file": str(args.prompt_file.resolve()), "prompt_file_sha256": sha256_file(args.prompt_file), "workflow": str(args.workflow), "workflow_sha256": sha256_file(args.workflow), "recipe": recipe, "source_size": args.source_size, "preview_size": args.production_size, "seeds": args.seeds, "icons_selected": len(entries), "candidate_count": len(jobs), "results": [], "artwork_qa": "not performed automatically", "background_removal": any(node.get("class_type") == "RemoveBackground" for node in template.values()), "alpha_join": any(node.get("class_type") == "JoinImageWithAlpha" for node in template.values())}
+    run = {"runner_version": VERSION, "run_id": run_id, "started_at": utc_now(), "prompt_file": str(args.prompt_file.resolve()), "prompt_file_sha256": sha256_file(args.prompt_file), "workflow": str(args.workflow), "workflow_sha256": sha256_file(args.workflow), "recipe": recipe, "generation_size": args.generation_size, "target_size": args.target_size, "seeds": args.seeds, "icons_selected": len(entries), "candidate_count": len(jobs), "results": [], "artwork_qa": "not performed automatically", "background_removal": any(node.get("class_type") == "RemoveBackground" for node in template.values()), "alpha_join": any(node.get("class_type") == "JoinImageWithAlpha" for node in template.values())}
     exit_code = 0
     times: list[float] = []
     try:
@@ -769,7 +761,7 @@ def main(argv: list[str] | None = None) -> int:
         run["not_attempted"] = len(jobs) - len(run["results"])
         save_json(reports / "latest_run.json", run)
         save_json(reports / (run_id + ".json"), run)
-        write_gallery(args.output_root, entries, args.seeds, args.production_size)
+        write_gallery(args.output_root, entries, args.seeds, args.target_size)
         total_time = format_elapsed_time(time.monotonic() - total_started)
         print(f"\nGenerated: {run['generated']}; reused: {run['reused']}; not attempted: {run['not_attempted']}; total time: {total_time}\nReview: {args.output_root / 'review.html'}\nReport: {reports / 'latest_run.json'}", flush=True)
         return exit_code
