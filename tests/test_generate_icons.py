@@ -23,7 +23,7 @@ spec = importlib.util.spec_from_file_location("runner", ROOT / "generate_icons.p
 r = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(r)
 
-TEST_WORKFLOW = r.validate_graph(r.load_json(ROOT / "icon_api_call.json"))
+TEST_WORKFLOW = r.validate_graph(r.load_json(ROOT / "workflow.json"))
 TEST_NODES = r.discover_nodes(TEST_WORKFLOW)
 
 
@@ -138,10 +138,6 @@ class MockComfy:
                             },
                             "outputs": {},
                         }
-                    elif owner.behaviour == "timeout":
-                        owner.running.append(
-                            [0, pid, payload["prompt"], {}, [owner.nodes["save"]]]
-                        )
                     self.send_json({"prompt_id": pid, "node_errors": {}})
                 elif self.path == "/interrupt":
                     owner.interrupts.append(payload)
@@ -194,21 +190,37 @@ class UnitTests(unittest.TestCase):
     def test_public_layout_defaults(self):
         args = r.parse_args([])
         self.assertEqual(args.prompt_file, ROOT / "prompts.json")
-        self.assertEqual(args.workflow, (ROOT / "icon_api_call.json").resolve())
+        self.assertEqual(args.workflow, (ROOT / "workflow.json").resolve())
         self.assertEqual(args.output_root.name, "generated_icons")
         self.assertEqual(args.seeds, [101, 102, 103])
+        self.assertEqual(args.generation_size, 1024)
+        self.assertEqual(args.target_size, 120)
+        self.assertFalse(hasattr(args, "seed"))
+        self.assertFalse(hasattr(args, "timeout"))
 
-    def test_output_root_override_removed(self):
+    def test_removed_public_arguments(self):
+        removed = [
+            ["--output-root", "somewhere-else"],
+            ["--seed", "101"],
+            ["--source-size", "768"],
+            ["--production-size", "120"],
+            ["--preview-size", "120"],
+            ["--timeout", "300"],
+        ]
         with contextlib.redirect_stderr(io.StringIO()):
-            with self.assertRaises(SystemExit):
-                r.parse_args(["--output-root", "somewhere-else"])
+            for argv in removed:
+                with self.subTest(argv=argv):
+                    with self.assertRaises(SystemExit):
+                        r.parse_args(argv)
 
     def test_startup_header_and_argument_summary(self):
         args = r.parse_args(
             [
                 str(ROOT / "sample.prompts.json"),
-                "--source-size",
+                "--generation-size",
                 "768",
+                "--target-size",
+                "96",
                 "--require-alpha",
                 "--limit",
                 "1",
@@ -224,8 +236,12 @@ class UnitTests(unittest.TestCase):
         self.assertIn("--workflow", text)
         self.assertIn("--seeds", text)
         self.assertIn("101 102 103", text)
-        self.assertIn("--source-size", text)
+        self.assertIn("--generation-size", text)
+        self.assertIn("Model generation size in pixels", text)
         self.assertIn("768", text)
+        self.assertIn("--target-size", text)
+        self.assertIn("Local review image size in pixels", text)
+        self.assertIn("96", text)
         self.assertIn("--require-alpha", text)
         self.assertIn("true", text)
         self.assertIn("output directory (fixed)", text)
@@ -467,16 +483,6 @@ class IntegrationTests(unittest.TestCase):
         self.assertTrue(
             (self.results / "source" / "test_icon_2.png").exists()
         )
-
-    def test_timeout_stops_after_one_request_and_targets_id(self):
-        self.server.behaviour = "timeout"
-        self.assertEqual(self.run_script(["--timeout", "0.07"]), 1)
-        self.assertEqual(len(self.server.graphs), 1)
-        self.assertEqual(
-            self.server.interrupts, [{"prompt_id": "mock-1"}]
-        )
-        self.assertEqual(self.server.deletions, [])
-        self.assertFalse((self.results / ".runner.lock").exists())
 
     def test_execution_error_stops_batch(self):
         self.server.behaviour = "error"
