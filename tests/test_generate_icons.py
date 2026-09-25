@@ -203,6 +203,34 @@ class UnitTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 r.parse_args(["--output-root", "somewhere-else"])
 
+    def test_startup_header_and_argument_summary(self):
+        args = r.parse_args(
+            [
+                str(ROOT / "sample.prompts.json"),
+                "--source-size",
+                "768",
+                "--require-alpha",
+                "--limit",
+                "1",
+            ]
+        )
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            r.print_startup_header()
+            r.print_argument_summary(args)
+        text = output.getvalue()
+        self.assertIn("___", text)
+        self.assertIn("Arguments:", text)
+        self.assertIn("prompt_file", text)
+        self.assertIn("--workflow", text)
+        self.assertIn("--seeds", text)
+        self.assertIn("101 102 103", text)
+        self.assertIn("--source-size", text)
+        self.assertIn("768", text)
+        self.assertIn("--require-alpha", text)
+        self.assertIn("true", text)
+        self.assertIn("output directory (fixed)", text)
+        self.assertIn("-" * 72, text)
+
     def test_flux_topology_not_titles(self):
         for node in self.graph.values():
             node["_meta"] = {"title": "deliberately wrong name"}
@@ -337,7 +365,11 @@ class UnitTests(unittest.TestCase):
                         ]
                     )
                 self.assertEqual(code, 0)
-                self.assertIn("candidate images: 3", output.getvalue())
+                text = output.getvalue()
+                self.assertIn("Arguments:", text)
+                self.assertIn("-" * 72, text)
+                self.assertIn("candidate images: 3", text)
+                self.assertLess(text.index("Arguments:"), text.index("Model:"))
                 self.assertFalse(Path(tmp, "generated_icons").exists())
             finally:
                 os.chdir(previous)
