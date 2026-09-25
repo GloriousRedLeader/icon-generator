@@ -266,12 +266,38 @@ def build_workflow(template: dict[str, Any], nodes: dict[str, str], entry: dict[
     return graph
 
 
-def fingerprint(graph: dict[str, Any], nodes: dict[str, str], target_size: int) -> str:
+def stable_workflow_for_fingerprint(graph: dict[str, Any], nodes: dict[str, str]) -> dict[str, Any]:
     stable = copy.deepcopy(graph)
     for node in stable.values():
         node.pop("_meta", None)
     set_input(stable, nodes["save"], "filename_prefix", "<candidate-output>")
-    return json_hash({"workflow": stable, "target_size": target_size, "resize": "Pillow-LANCZOS"})
+    return stable
+
+
+def fingerprint(graph: dict[str, Any], nodes: dict[str, str]) -> str:
+    """Fingerprint only the generated source recipe, not derived review-image size."""
+    return json_hash({"workflow": stable_workflow_for_fingerprint(graph, nodes)})
+
+
+def legacy_fingerprint(graph: dict[str, Any], nodes: dict[str, str], target_size: int) -> str:
+    """Recognize metadata written by older runners whose fingerprint included review size."""
+    return json_hash({
+        "workflow": stable_workflow_for_fingerprint(graph, nodes),
+        "target_size": target_size,
+        "resize": "Pillow-LANCZOS",
+    })
+
+
+def previous_target_size(meta: dict[str, Any]) -> int | None:
+    dimensions = meta.get("preview", {}).get("dimensions")
+    if (
+        isinstance(dimensions, list)
+        and len(dimensions) == 2
+        and type(dimensions[0]) is int
+        and dimensions[0] == dimensions[1]
+    ):
+        return dimensions[0]
+    return None
 
 
 def request_json(url: str, *, payload: Any = None, timeout: float = 30) -> Any:
@@ -487,11 +513,20 @@ def generate_candidate(args: argparse.Namespace, client: ComfyClient, template: 
     paths = candidate_paths(args.output_root, name, args.target_size)
     prefix = "icon_generator/" + Path(name).stem + "_" + run_id[-8:]
     graph = build_workflow(template, nodes, entry, seed, args.generation_size, prefix)
-    key = fingerprint(graph, nodes, args.target_size)
+    key = fingerprint(graph, nodes)
     old = load_json(paths["meta"]) if paths["meta"].exists() else None
     if not args.overwrite and (old is not None or paths["source"].exists() or paths["preview"].exists()):
-        if not isinstance(old, dict) or old.get("fingerprint") != key:
-            raise IconError(f"{name} already exists for a different or unrecorded recipe. Use --overwrite only if you deliberately want to regenerate and replace it. Nothing was replaced.")
+        old_matches = isinstance(old, dict) and old.get("fingerprint") == key
+        if isinstance(old, dict) and not old_matches:
+            old_target_size = previous_target_size(old)
+            old_matches = (
+                old_target_size is not None
+                and old.get("fingerprint") == legacy_fingerprint(graph, nodes, old_target_size)
+            )
+        if not old_matches:
+            raise IconError(f"{name} already exists for a different or unrecorded generation recipe. Use --overwrite only if you deliberately want to regenerate and replace it. Nothing was replaced.")
+        old["fingerprint"] = key
+        old["fingerprint_scope"] = "generated-source-v1"
         if old.get("phase") in {"complete", "downloaded"} and paths["source"].exists():
             if sha256_file(paths["source"]) != old.get("source_sha256"):
                 raise IconError(f"{name}: source hash changed. Refusing to treat this edited file as the recorded generated source.")
@@ -519,7 +554,7 @@ def generate_candidate(args: argparse.Namespace, client: ComfyClient, template: 
                 f"{name} has an unfinished or uncertain prior submission. "
                 "Check ComfyUI before retrying so the script does not duplicate a job."
             )
-    meta = {"runner_version": VERSION, "filename": name, "original_filename": entry["filename"], "display_name": entry.get("display_name", entry["filename"]), "variant": variant, "seed": seed, "fingerprint": key, "phase": "submitting", "status": "unreviewed", "qa_status": "needs-visual-review", "started_at": utc_now(), "run_id": run_id, "comfy_client_id": client.client_id, "entry": entry, "submitted_workflow": graph, "source_path": str(paths["source"]), "preview_path": str(paths["preview"])}
+    meta = {"runner_version": VERSION, "filename": name, "original_filename": entry["filename"], "display_name": entry.get("display_name", entry["filename"]), "variant": variant, "seed": seed, "fingerprint": key, "fingerprint_scope": "generated-source-v1", "phase": "submitting", "status": "unreviewed", "qa_status": "needs-visual-review", "started_at": utc_now(), "run_id": run_id, "comfy_client_id": client.client_id, "entry": entry, "submitted_workflow": graph, "source_path": str(paths["source"]), "preview_path": str(paths["preview"])}
     save_json(paths["meta"], meta)
     prompt_id = None
     start = time.monotonic()
@@ -631,7 +666,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--only", nargs="+", help="Select exact filename, filename stem, or semantic key; e.g. --only starfall_sabre")
     parser.add_argument("--limit", type=int, help="Maximum number of matching ICONS, not images. --limit 1 makes three candidates by default.")
     parser.add_argument("--generation-size", dest="generation_size", type=int, default=1024, help="Square pixel size sent to the image model. Default: 1024.")
-    parser.add_argument("--target-size", dest="target_size", type=int, default=120, help="Square pixel size of the local review image. Default: 120.")
+    parser.add_argument("--target-size", dest="target_size", type=int, default=96, help="Square pixel size of the local review image. Default: 96.")
     parser.add_argument("--overwrite", action="store_true", help="Explicitly regenerate and replace selected candidate files; never touches repository paths.")
     parser.add_argument("--require-alpha", action="store_true", help="Require real transparent pixels. Recommended with the supplied BiRefNet + JoinImageWithAlpha workflow.")
     parser.add_argument("--dry-run", action="store_true", help="Validate and print the plan only; no server connection and no generation.")
