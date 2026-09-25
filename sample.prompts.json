@@ -3,97 +3,24 @@
     "filename": "starfall_sabre.png",
     "semantic_key": "ui.item.starfall_sabre",
     "display_name": "Starfall Sabre",
-    "source_ids": [
-      "weapon_starfall_sabre"
-    ],
     "repository_target_path": "Assets/Icons/Items/starfall_sabre.png",
-    "migration_status": "pending",
-    "authored_context": "A swift one-handed fantasy sabre associated with starlight and precision. The item should feel elegant and practical rather than oversized or ceremonial.",
     "positive_prompt": "A colorful hand-painted cartoon fantasy RPG inventory icon of one Starfall Sabre. Create a single elegant one-handed sabre with a slightly curved polished steel blade, a compact midnight-blue guard, a dark leather-wrapped grip, and a small pale-gold pommel. A restrained line of cool blue-white star-like inlay runs near the base of the blade, suggesting celestial magic while remaining part of the weapon. Keep the sword physically coherent and practical, with the blade, guard, grip, and pommel forming one connected object.\n\nPose the complete sabre diagonally from lower left toward upper right in a three-quarter inventory-icon view. Keep the entire silhouette visible with generous space around every edge. Do not add a hand, sheath, second weapon, floating stars, character, scenery, text, border, or UI frame.\n\nUse polished stylized game art: chunky readable proportions, confident dark outlines, crisp painted shadows, broad highlights, clear steel and leather materials, and restrained magical accents. The object should remain recognizable when reduced to a small game icon. Place it on a simple clean white background suitable for background removal.",
-    "negative_prompt": "",
-    "prompt_version": "sample-v1",
-    "icon_category": "long",
-    "visual_brief": "Elegant curved steel sabre with midnight-blue fittings and subtle celestial inlay.",
-    "review_status": "unreviewed",
-    "generation_seeds": [
-      101,
-      102,
-      103
-    ],
-    "source_basis": {
-      "context_source": "fictional public example",
-      "mechanics_note": "Example data only; not tied to any existing game."
-    },
-    "qa_checks": [
-      "Exactly one sabre",
-      "Complete unclipped silhouette",
-      "Readable blade, guard, grip, and pommel",
-      "No character, hand, text, border, or extra props"
-    ]
+    "negative_prompt": ""
   },
   {
     "filename": "embermoss_satchel.png",
     "semantic_key": "ui.item.embermoss_satchel",
     "display_name": "Embermoss Satchel",
-    "source_ids": [
-      "tool_embermoss_satchel"
-    ],
     "repository_target_path": "Assets/Icons/Items/embermoss_satchel.png",
-    "migration_status": "pending",
-    "authored_context": "A rugged alchemist's gathering satchel used to carry warm magical herbs. It should read as a compact utility bag, not as a backpack or treasure chest.",
     "positive_prompt": "A colorful hand-painted cartoon fantasy RPG inventory icon of one Embermoss Satchel. Create a compact rugged brown leather gathering pouch with a rounded flap, thick stitched seams, two small brass buckles, and a short attached carrying strap. A few tiny orange-red moss fronds peek from one securely closed side pocket, giving off a faint warm glow. The satchel itself remains the dominant object and all herbs stay attached to or contained by the bag.\n\nShow the complete satchel from a slightly elevated three-quarter angle with a modest diagonal tilt. Make the leather folds, buckles, pockets, and strap easy to read. Do not add a character, loose tools, potion bottles, coins, separate plants, ground, scenery, text, border, or UI frame.\n\nUse polished stylized game art with bold readable shapes, dark outlines, crisp cel-like shadow masses, warm painted highlights, and clear separation between leather, brass, cloth, and magical plant material. Keep detail controlled so the icon reads clearly at small size. Place the object on a simple clean white background suitable for background removal.",
-    "negative_prompt": "",
-    "prompt_version": "sample-v1",
-    "icon_category": "single",
-    "visual_brief": "Compact leather herb satchel with brass buckles and a restrained warm magical moss accent.",
-    "review_status": "unreviewed",
-    "generation_seeds": [
-      101,
-      102,
-      103
-    ],
-    "source_basis": {
-      "context_source": "fictional public example",
-      "mechanics_note": "Example data only; not tied to any existing game."
-    },
-    "qa_checks": [
-      "Exactly one satchel",
-      "Bag remains the dominant object",
-      "No loose unrelated props",
-      "Complete unclipped silhouette"
-    ]
+    "negative_prompt": ""
   },
   {
     "filename": "moonwell_boots.png",
     "semantic_key": "ui.item.moonwell_boots",
     "display_name": "Moonwell Boots",
-    "source_ids": [
-      "equipment_boots_moonwell"
-    ],
     "repository_target_path": "Assets/Icons/Items/moonwell_boots.png",
-    "migration_status": "pending",
-    "authored_context": "A matching pair of light magical travel boots associated with calm moonlit water and mana recovery. They should look wearable, practical, and clearly matched.",
     "positive_prompt": "A colorful hand-painted cartoon fantasy RPG inventory icon of a matching pair of Moonwell Boots. Create two empty unworn ankle boots made from deep navy leather with soft pale-blue cloth cuffs, silver fastening tabs, and thick practical soles. Each boot has the same small crescent-shaped silver inlay at the ankle and a narrow turquoise seam that suggests calm moonlit water. Keep the magical effect subtle and attached to the footwear.\n\nArrange exactly one left boot and one right boot in a compact staggered composition: one slightly forward and turned outward, the other slightly behind at a different angle. Both boots must have matching materials, colors, cuffs, fastenings, and sole construction. Show both complete toes, heels, openings, and soles. No legs, feet, wearer, third boot, floating moon, water puddle, scenery, text, border, or UI frame.\n\nUse polished cartoon fantasy game art with chunky readable silhouettes, confident dark outlines, crisp painted shadows, and broad highlights. Make leather, cloth, silver, and the subtle turquoise magical seam visually distinct. Keep the complete pair centered with clear space around the edges on a simple clean white background suitable for background removal.",
-    "negative_prompt": "",
-    "prompt_version": "sample-v1",
-    "icon_category": "boots",
-    "visual_brief": "Matching navy travel boots with pale-blue cuffs, silver crescent details, and restrained turquoise magic.",
-    "review_status": "unreviewed",
-    "generation_seeds": [
-      101,
-      102,
-      103
-    ],
-    "source_basis": {
-      "context_source": "fictional public example",
-      "mechanics_note": "Example data only; not tied to any existing game."
-    },
-    "qa_checks": [
-      "Exactly two matching boots",
-      "One left and one right boot",
-      "No legs or feet",
-      "Matching materials and construction",
-      "Complete unclipped silhouettes"
-    ]
+    "negative_prompt": ""
   }
 ]
