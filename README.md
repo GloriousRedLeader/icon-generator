@@ -366,13 +366,15 @@ generated_icons/
 └── review.html
 ```
 
-If you use a different target size, the preview folder follows that value, for example:
+If you generate more than one target size over time, multiple preview folders can coexist, for example:
 
 ```text
 preview_96/
-preview_96/
+preview_120/
 preview_256/
 ```
+
+Changing only `--target-size` reuses the existing generated source PNGs and creates or rebuilds the corresponding `preview_<size>/` folder. It does not rerun the image model.
 
 ### `source/`
 
@@ -423,7 +425,7 @@ When you run the command again:
 
 This is designed to protect long batches from wasting completed work.
 
-If existing output belongs to a different prompt, seed, workflow, generation size, or target size, the runner refuses to silently replace it.
+If an existing source candidate belongs to a different prompt, seed, workflow, or generation size, the runner refuses to silently replace it. A different `--target-size` is safe because it changes only the derived review image, not the generated source.
 
 To deliberately replace selected candidates:
 
@@ -443,31 +445,74 @@ The repository includes a standalone browser review tool:
 icon_review.html
 ```
 
-Open it directly in your browser.
+Open that file directly in your browser.
 
-Choose the generated folder:
+### 1. Load the top-level generated folder
+
+Click **1. Load generated_icons folder** and choose:
 
 ```text
 generated_icons/
 ```
 
-The review page:
+Choose the top-level folder, not an individual `preview_<size>` folder. The review tool needs the top-level folder so it can read the selected preview images together with their metadata and full-resolution source paths.
+
+### 2. Choose exactly one preview dimension
+
+The page detects every available preview folder, such as:
+
+```text
+preview_96/
+preview_120/
+preview_256/
+```
+
+If more than one exists, the **2. Choose preview folder** menu requires you to choose the exact dimension you want to review.
+
+For example:
+
+```text
+preview_96 (96 × 96)
+```
+
+The review page displays **only that one preview dimension**. It does not mix sizes and does not silently substitute the full-resolution source image when a preview is missing.
+
+If only one preview folder exists, the page selects it automatically.
+
+Changing the selected preview folder clears the current on-page selections. This is intentional: each approval pass belongs to one exact image dimension.
+
+### 3. Review and select candidates
+
+For the selected preview dimension, the page:
 
 - groups candidates by icon name
-- dynamically detects every numbered candidate present for an icon, so `_1` through `_5`, `_10`, or any other generated count are all shown
-- displays the full candidate set in one horizontally scrollable row
-- prefers the resized `preview_<size>` images for visual review
+- dynamically detects every numbered candidate present for an icon, so `_1` through `_5`, `_10`, or any other generated count are shown
+- displays the complete candidate set in one horizontally scrollable row
+- shows the active review dimension in the status line
 - shows seed and available metadata
-- lets you click one candidate to select it
-- tracks how many icons have been selected
+- lets you click one candidate per icon
+- tracks selected versus total icons
 - can jump to the next unselected icon
-- can import an earlier choices JSON
-- can copy the current choices to the clipboard
+- can import an earlier choices JSON after a preview dimension has been selected
+- can copy the current choices JSON to the clipboard
 - can download the choices as JSON
 
-The exported JSON includes the selected candidate path and, when supplied in your prompt metadata, the intended `repository_target_path`.
+### 4. Export the approval metadata
 
-The review tool **does not copy or modify game assets**. Its only job is to record your selections so another script, tool, or AI can perform a separate installation step.
+The exported JSON records the dimension that was actually reviewed:
+
+```json
+{
+  "review_preview_folder": "preview_96",
+  "review_target_size": 96
+}
+```
+
+Each selected icon also records its selected preview path, matching full-resolution source path when available, metadata path, seed, and `repository_target_path` when that field was supplied in the prompt file.
+
+The review tool **does not copy, rename, resize, or modify game assets**. Its only job is to record which candidate you approved at one specific preview dimension so another script, tool, or AI can perform a separate installation step.
+
+To compare 96 × 96 against 120 × 120, review and export one dimension first, then switch the selector and perform a separate review pass for the other dimension.
 
 ---
 
