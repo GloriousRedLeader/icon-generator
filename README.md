@@ -2,6 +2,12 @@
 
 Icon Generator is a local batch tool for creating multiple game-icon candidates through ComfyUI, reviewing them at game UI size, and exporting your approval choices.
 
+## Why This Exists
+
+This project exists because asking Gemini, ChatGPT, or Claude to produce a hundred consistently sized game icons is apparently the computational equivalent of asking three extremely confident interns to assemble a nuclear reactor from a Pinterest board. They can generate one beautiful image, explain image dimensions at tremendous length, and then immediately forget both the dimensions and the image. Ask for a large batch and, somewhere around icon 17, filenames mutate, aspect ratios wander off, transparency becomes a philosophical question, and the entire operation develops the administrative stability of a collapsing government. Icon Generator was created so the computer can do the same boring thing correctly hundreds of times without needing to be reminded what “120×120” means.
+
+The current default review target is `96 × 96`; the line above is retained as the historical joke that caused this project to exist.
+
 It is designed for workflows where you have a JSON list of item names and image prompts and want a repeatable way to:
 
 - generate several candidates for every icon
@@ -287,13 +293,15 @@ The generation size must be a multiple of 16 between 256 and 2048.
 
 ### Change the review target size
 
-The default local review image is 120 × 120:
+The default local review image is 96 × 96:
 
 ```bash
-python3 generate_icons.py --target-size 120
+python3 generate_icons.py --target-size 96
 ```
 
 This does not change the model generation resolution. It changes the resized review copy written after generation.
+
+Changing only `--target-size` does not require regenerating the AI source image. The runner reuses the existing generated source and rebuilds the derived review image at the new size.
 
 ### Require transparency
 
@@ -332,7 +340,7 @@ python3 generate_icons.py --workflow /path/to/workflow.json
 | `--only` | Generate only specific filenames, filename stems, or semantic keys. |
 | `--limit` | Process only the first N matching icons. |
 | `--generation-size` | Square resolution sent to the image model. Default 1024. |
-| `--target-size` | Square size of the local review image. Default 120. |
+| `--target-size` | Square size of the local review image. Default 96. |
 | `--overwrite` | Deliberately regenerate and replace selected existing candidates. |
 | `--require-alpha` | Fail a candidate if the downloaded PNG has no real transparency. |
 | `--dry-run` | Validate and print the generation plan without contacting ComfyUI. |
@@ -352,7 +360,7 @@ Generated files are always stored under:
 ```text
 generated_icons/
 ├── source/
-├── preview_120/
+├── preview_96/
 ├── metadata/
 ├── reports/
 └── review.html
@@ -362,7 +370,7 @@ If you use a different target size, the preview folder follows that value, for e
 
 ```text
 preview_96/
-preview_120/
+preview_96/
 preview_256/
 ```
 
