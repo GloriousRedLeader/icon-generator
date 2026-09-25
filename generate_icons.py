@@ -582,6 +582,61 @@ def write_gallery(root: Path, entries: list[dict[str, Any]], seeds: list[int], p
     atomic_bytes(root / "review.html", "\n".join(parts).encode("utf-8"))
 
 
+ASCII_HEADER = r"""  ___ ___ ___  _  _    ___ ___ _  _ ___ ___    _ _____ ___  ___
+ |_ _/ __/ _ \| \| |  / __| __| \| | __| _ \  /_\_   _/ _ \| _ \
+  | | (_| (_) | .` | | (_ | _|| .` | _||   / / _ \| || (_) |   /
+ |___\___\___/|_|\_|  \___|___|_|\_|___|_|_\/_/ \_\_| \___/|_|_\
+"""
+
+
+def format_argument_value(value: Any) -> str:
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return "(not set)"
+    if isinstance(value, (list, tuple)):
+        return " ".join(str(item) for item in value) if value else "(none)"
+    return str(value)
+
+
+def print_startup_header() -> None:
+    print(ASCII_HEADER)
+    print()
+
+
+def print_argument_summary(args: argparse.Namespace) -> None:
+    rows = [
+        ("prompt_file", args.prompt_file),
+        ("--workflow", args.workflow),
+        ("--comfy-url", args.comfy_url),
+        ("--seeds", args.seeds),
+        ("--seed", args.seed),
+        ("--only", args.only),
+        ("--only-status", args.only_status),
+        ("--limit", args.limit),
+        ("--source-size", args.source_size),
+        ("--production-size", args.production_size),
+        ("--timeout", args.timeout),
+        ("--poll-seconds", args.poll_seconds),
+        ("--overwrite", args.overwrite),
+        ("--retry-failed", args.retry_failed),
+        ("--require-alpha", args.require_alpha),
+        ("--allow-nonstandard-workflow", args.allow_nonstandard_workflow),
+        ("--dry-run", args.dry_run),
+        ("--check-server", args.check_server),
+        ("output directory (fixed)", args.output_root),
+    ]
+    width = max(len(name) for name, _ in rows)
+    print("Arguments:")
+    for name, value in rows:
+        print(f"  {name:<{width}}  {format_argument_value(value)}")
+    print()
+    print("-" * 72)
+    print()
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate three independent FLUX cartoon candidates per icon; never install into game assets.")
     parser.add_argument("prompt_file", nargs="?", type=Path, default=SCRIPT_DIR / "prompts.json", help="Prompt JSON array; defaults to prompts.json beside this script.")
@@ -633,8 +688,10 @@ def format_elapsed_time(seconds: float) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     total_started = time.monotonic()
+    print_startup_header()
     try:
         args = parse_args(argv)
+        print_argument_summary(args)
         entries = select_entries(validate_entries(load_json(args.prompt_file)), args)
         template = validate_graph(load_json(args.workflow))
         nodes = discover_nodes(template)
@@ -643,7 +700,7 @@ def main(argv: list[str] | None = None) -> int:
         # Exercise linked prompt/size/seed setters before talking to the server.
         if entries:
             build_workflow(template, nodes, entries[0], args.seeds[0], args.source_size, "icon_generator/preflight")
-        print(f"Icon generator {VERSION}\nPrompts: {args.prompt_file}\nWorkflow: {args.workflow}\nModel: {recipe['model']}\nSteps / CFG: {recipe['steps']} / {recipe['cfg']}\nSize: {args.source_size} x {args.source_size}\nSeeds: {args.seeds}\nIcons: {len(entries)}; candidate images: {len(jobs)}\nOutput: {args.output_root}", flush=True)
+        print(f"Model: {recipe['model']}\nSteps / CFG: {recipe['steps']} / {recipe['cfg']}\nIcons: {len(entries)}; candidate images: {len(jobs)}", flush=True)
         print("Images are unreviewed candidates. Background removal is performed only if the external workflow contains it; no game-asset replacement is performed.", flush=True)
         if args.dry_run:
             for entry in entries:
