@@ -597,7 +597,7 @@ def format_argument_value(value: Any) -> str:
 
 
 def print_startup_header() -> None:
-    print(ASCII_HEADER)
+    print(ASCII_HEADER.rstrip())
     print()
 
 
