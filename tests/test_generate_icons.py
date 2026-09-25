@@ -70,7 +70,7 @@ class MockComfy:
                         for node in owner.workflow.values()
                     }
                     for cls, field, value in (
-                        ("UNETLoader", "unet_name", r.DEFAULT_MODEL),
+                        ("UNETLoader", "unet_name", r.literal_input(TEST_WORKFLOW, TEST_NODES["model"], "unet_name")),
                         ("CLIPLoader", "clip_name", "qwen_3_4b.safetensors"),
                         ("VAELoader", "vae_name", "flux2-vae.safetensors"),
                     ):
@@ -197,6 +197,11 @@ class UnitTests(unittest.TestCase):
         self.assertEqual(args.target_size, 120)
         self.assertFalse(hasattr(args, "seed"))
         self.assertFalse(hasattr(args, "timeout"))
+        self.assertFalse(hasattr(args, "only_status"))
+        self.assertFalse(hasattr(args, "poll_seconds"))
+        self.assertFalse(hasattr(args, "retry_failed"))
+        self.assertFalse(hasattr(args, "allow_nonstandard_workflow"))
+        self.assertEqual(r.POLL_SECONDS, 1.0)
 
     def test_removed_public_arguments(self):
         removed = [
@@ -206,6 +211,10 @@ class UnitTests(unittest.TestCase):
             ["--production-size", "120"],
             ["--preview-size", "120"],
             ["--timeout", "300"],
+            ["--only-status", "pending"],
+            ["--poll-seconds", "0.1"],
+            ["--retry-failed"],
+            ["--allow-nonstandard-workflow"],
         ]
         with contextlib.redirect_stderr(io.StringIO()):
             for argv in removed:
@@ -244,7 +253,11 @@ class UnitTests(unittest.TestCase):
         self.assertIn("96", text)
         self.assertIn("--require-alpha", text)
         self.assertIn("true", text)
-        self.assertIn("output directory (fixed)", text)
+        self.assertIn("output directory", text)
+        self.assertNotIn("--only-status", text)
+        self.assertNotIn("--poll-seconds", text)
+        self.assertNotIn("--retry-failed", text)
+        self.assertNotIn("--allow-nonstandard-workflow", text)
         self.assertIn("-" * 72, text)
 
     def test_flux_topology_not_titles(self):
@@ -310,17 +323,14 @@ class UnitTests(unittest.TestCase):
             with self.assertRaises(r.IconError):
                 r.validate_entries([example(filename)])
 
-    def test_base_model_is_rejected(self):
-        self.graph["1"]["inputs"]["unet_name"] = (
-            "flux-2-klein-base-4b.safetensors"
-        )
-        with self.assertRaises(r.IconError):
-            r.validate_recipe(self.graph, self.nodes)
-
-    def test_fifty_steps_rejected(self):
-        self.graph["12"]["inputs"]["steps"] = 50
-        with self.assertRaises(r.IconError):
-            r.validate_recipe(self.graph, self.nodes)
+    def test_workflow_settings_are_reported_without_recipe_lock(self):
+        self.graph["1"]["inputs"]["unet_name"] = "custom-model.safetensors"
+        self.graph["12"]["inputs"]["steps"] = 12
+        self.graph["10"]["inputs"]["cfg"] = 2
+        recipe = r.workflow_recipe(self.graph, self.nodes)
+        self.assertEqual(recipe["model"], "custom-model.safetensors")
+        self.assertEqual(recipe["steps"], 12)
+        self.assertEqual(recipe["cfg"], 2)
 
     def test_ui_graph_rejected(self):
         with self.assertRaises(r.IconError):
@@ -405,8 +415,6 @@ class IntegrationTests(unittest.TestCase):
             str(self.prompts),
             "--comfy-url",
             self.server.url,
-            "--poll-seconds",
-            "0.01",
         ]
 
     def tearDown(self):
@@ -489,12 +497,13 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(self.run_script(), 1)
         self.assertEqual(len(self.server.graphs), 1)
 
-    def test_validation_error_does_not_blindly_retry(self):
+    def test_failure_stops_run_and_later_rerun_retries_once(self):
         self.server.behaviour = "rejected"
         self.assertEqual(self.run_script(), 1)
         self.assertEqual(len(self.server.graphs), 1)
+
         self.assertEqual(self.run_script(), 1)
-        self.assertEqual(len(self.server.graphs), 1)
+        self.assertEqual(len(self.server.graphs), 2)
 
     def test_busy_queue_untouched(self):
         self.server.running = [[0, "someone-else", {}, {}, []]]
