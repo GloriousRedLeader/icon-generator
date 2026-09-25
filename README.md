@@ -9,7 +9,7 @@ The repository keeps the ComfyUI API workflow, Python runner, sample prompt mani
 ```text
 icon-generator/
 ├── generate_icons.py
-├── icon_api_call.json
+├── workflow.json
 ├── sample.prompts.json
 ├── icon_review.html
 ├── tests/
@@ -39,7 +39,7 @@ That folder is also ignored by Git.
 - Python 3.10 or later
 - Pillow
 - A running local ComfyUI server, defaulting to `http://127.0.0.1:8188`
-- The models and custom nodes referenced by `icon_api_call.json`
+- The models and custom nodes referenced by `workflow.json`
 
 The supplied workflow currently expects these model filenames:
 
@@ -105,7 +105,7 @@ python3 generate_icons.py --only starfall_sabre
 
 ## Startup display
 
-Every normal invocation starts with an ASCII `ICON GENERATOR` banner, one blank line, then a complete list of the effective program arguments and fixed output directory. A separator line follows before validation, generation progress, or errors begin.
+Every normal invocation starts with an ASCII `ICON GENERATOR` banner, one blank line, then a table showing the effective argument values and a short description of each setting. A separator line follows before normal validation, generation progress, or runtime errors.
 
 For example:
 
@@ -115,14 +115,25 @@ For example:
   | | (_| (_) | .` | | (_ | _|| .` | _||   / / _ \\| || (_) |   /
  |___\\___\\___/|_|\\_|  \\___|___|_|\\_|___|_|_\\/_/ \\_\\_| \\___/|_|_\\
 
+
 Arguments:
-  prompt_file                  /path/to/icon-generator/prompts.json
-  --workflow                   /path/to/icon-generator/icon_api_call.json
-  --comfy-url                  http://127.0.0.1:8188
-  --seeds                      101 102 103
-  --seed                       (not set)
-  ...
-  output directory (fixed)     /path/to/icon-generator/generated_icons
+  OPTION              VALUE                                      DESCRIPTION
+  prompt_file         /path/to/icon-generator/prompts.json        Prompt definitions JSON
+  --workflow          /path/to/icon-generator/workflow.json       ComfyUI API workflow JSON
+  --comfy-url         http://127.0.0.1:8188                       ComfyUI server address
+  --seeds             101 102 103                                 One candidate per seed
+  --only              (not set)                                   Generate only named icons
+  --only-status       (not set)                                   Filter by migration_status
+  --limit             (not set)                                   Maximum icons to process
+  --generation-size   1024                                        Model generation size in pixels
+  --target-size       120                                         Local review image size in pixels
+  --poll-seconds      1.0                                         Seconds between status checks
+  --overwrite         false                                       Replace matching existing candidates
+  --retry-failed      false                                       Retry recorded failed candidates
+  --require-alpha     false                                       Require real transparent pixels
+  --dry-run           false                                       Validate plan without generating
+  --check-server      false                                       Validate ComfyUI without generating
+  output directory    /path/to/icon-generator/generated_icons     Fixed generated output folder
 
 ------------------------------------------------------------------------
 
@@ -131,7 +142,13 @@ Steps / CFG: 4 / 1
 ...
 ```
 
-This makes the exact effective settings visible at the start of each run before the normal output or any runtime error messages.
+There is one seed option: `--seeds`. It accepts one or more seed values. With the default `101 102 103`, the generator creates three candidates per icon. Supplying one value creates one candidate; supplying five values creates five candidates.
+
+`--generation-size` is the square resolution sent to the image model. The name intentionally avoids `model-size`, which could be confused with the model's parameter size (for example, 4B).
+
+`--target-size` is the square size used for the local review image written under `preview_<size>/`.
+
+There is no generation-duration timeout. Once an image is submitted, the runner waits for ComfyUI to finish, report an error, lose the connection repeatedly, or be interrupted by the user. This means a large batch does not stop merely because a generation takes longer than five minutes.
 
 ## Default candidates and seeds
 
@@ -227,27 +244,27 @@ A minimal entry looks like:
 
 ## Resolution and speed
 
-The default source size is 1024×1024.
+The default generation size is 1024×1024.
 
 You can request a smaller square size to reduce local generation cost:
 
 ```bash
-python3 generate_icons.py --source-size 768
+python3 generate_icons.py --generation-size 768
 ```
 
 The runner accepts source sizes from 256 through 2048, in multiples of 16. Lower resolutions can be faster, but may reduce small structural detail.
 
-The 120-pixel preview size can be changed separately:
+The target review size can be changed separately:
 
 ```bash
-python3 generate_icons.py --production-size 120
+python3 generate_icons.py --target-size 120
 ```
 
-Despite the historical option name, these are review previews; the runner does not install production assets.
+The target-size output is still a review image; the runner does not install production assets.
 
 ## Transparency
 
-The supplied `icon_api_call.json` includes background removal and alpha joining before `SaveImage`.
+The supplied `workflow.json` includes background removal and alpha joining before `SaveImage`.
 
 `--require-alpha` does **not** perform another background-removal pass. It only verifies that the downloaded result contains real transparent pixels and fails the candidate if it does not:
 
@@ -260,7 +277,7 @@ python3 generate_icons.py --require-alpha
 The ComfyUI API graph is stored explicitly in:
 
 ```text
-icon_api_call.json
+workflow.json
 ```
 
 It is not embedded inside `generate_icons.py`.
@@ -301,7 +318,7 @@ The tests use a local mock HTTP server and do not invoke diffusion:
 python3 -m unittest discover -s tests -v
 ```
 
-They cover the public file layout, workflow topology, prompt replacement, seed mapping, size overrides, output naming, resume behavior, overwrite protection, timeout handling, model validation, and alpha verification.
+They cover the public file layout, workflow topology, prompt replacement, seed mapping, size overrides, output naming, resume behavior, overwrite protection, model validation, and alpha verification.
 
 ## Safety of repository writes
 
