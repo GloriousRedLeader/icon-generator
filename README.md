@@ -507,3 +507,14 @@ Icon Generator does not:
 - automatically decide which generated icon is best
 
 It generates candidates, records metadata, and gives you a review/approval workflow.
+
+---
+
+## License
+
+Icon Generator is released under the [MIT License](LICENSE).
+
+You may use, modify, redistribute, sublicense, and include this project's code in commercial or closed-source software, subject to the MIT License notice requirements.
+
+Third-party software, ComfyUI custom nodes, and model weights used with this project are **not** relicensed by this repository. ComfyUI, FLUX, Qwen, BiRefNet, and any other external models or dependencies remain subject to their own licenses and terms.
+
