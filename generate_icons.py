@@ -6,12 +6,12 @@ Defaults: the supplied FLUX.2 Klein 4B DISTILLED workflow, 4 steps, CFG 1,
 
 Run beside prompts.json:
     python3 generate_icons.py --dry-run
-    python3 generate_icons.py --only frostweave_gloves
+    python3 generate_icons.py --only starfall_sabre
     python3 generate_icons.py
 
-No reference images, model downloads, or repository writes.
-The external workflow.json workflow performs BiRefNet background removal and alpha joining.
-The only third-party dependency used by this runner is Pillow, also used by the original runner.
+No reference images, model downloads, game-asset writes, or cloud API keys are required by this runner.
+The supplied workflow.json performs BiRefNet background removal and alpha joining.
+The only third-party Python dependency used by the runner is Pillow.
 """
 from __future__ import annotations
 
@@ -21,7 +21,6 @@ import hashlib
 import html
 import io
 import json
-import math
 import os
 import re
 import sys
@@ -629,7 +628,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--workflow", type=Path, default=DEFAULT_WORKFLOW, help="ComfyUI API-format workflow JSON. Default: workflow.json beside this script.")
     parser.add_argument("--comfy-url", default=DEFAULT_COMFY_URL)
     parser.add_argument("--seeds", type=int, nargs="+", default=None, help="Seed values in candidate suffix order. Default: 101 102 103. One candidate is generated per seed.")
-    parser.add_argument("--only", nargs="+", help="Select exact filename, filename stem, or semantic key; e.g. --only frostweave_gloves health_potion")
+    parser.add_argument("--only", nargs="+", help="Select exact filename, filename stem, or semantic key; e.g. --only starfall_sabre")
     parser.add_argument("--limit", type=int, help="Maximum number of matching ICONS, not images. --limit 1 makes three candidates by default.")
     parser.add_argument("--generation-size", dest="generation_size", type=int, default=1024, help="Square pixel size sent to the image model. Default: 1024.")
     parser.add_argument("--target-size", dest="target_size", type=int, default=120, help="Square pixel size of the local review image. Default: 120.")
