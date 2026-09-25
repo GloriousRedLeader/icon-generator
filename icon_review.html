@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DNG Icon Review & Approval</title>
+<title>Icon Review & Approval</title>
 <style>
   :root {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -232,10 +232,10 @@
 </head>
 <body>
 <header>
-  <h1>DNG Icon Review & Approval</h1>
+  <h1>Icon Review & Approval</h1>
   <div class="toolbar">
     <label class="file-label">
-      Load generated_icons_v2 folder
+      Load generated_icons folder
       <input id="folderInput" type="file" webkitdirectory directory multiple>
     </label>
     <label class="file-label">
@@ -250,7 +250,7 @@
     <span id="status">No folder loaded</span>
   </div>
   <div class="help">
-    Select the <strong>generated_icons_v2</strong> folder produced by the generator.
+    Select the <strong>generated_icons</strong> folder produced by the generator.
     Click one candidate image per icon to approve it. This page never copies or modifies game assets.
     Exported JSON contains the selected source-relative path and repository target path (when present in metadata)
     so another AI/tool can perform the copy later.
@@ -258,7 +258,7 @@
 </header>
 
 <main>
-  <div id="empty">Load your <code>generated_icons_v2</code> folder to begin.</div>
+  <div id="empty">Load your <code>generated_icons</code> folder to begin.</div>
   <div id="rows"></div>
 </main>
 
@@ -294,7 +294,7 @@
   let fileIndex = new Map();
   let metadataIndex = new Map();
   let selections = new Map();
-  let rootFolderName = "generated_icons_v2";
+  let rootFolderName = "generated_icons";
 
   function normalizePath(file) {
     return (file.webkitRelativePath || file.name).replaceAll("\\", "/");
@@ -561,7 +561,7 @@
     }
 
     return {
-      schema: "dng_icon_review_choices_v1",
+      schema: "icon_review_choices_v1",
       generated_root_folder: rootFolderName,
       note: "Review metadata only. This file does not copy or modify game assets.",
       selected_count: selected.length,
