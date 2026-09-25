@@ -51,41 +51,56 @@ That folder is also ignored by Git.
 
 ---
 
-## Minimum requirements
+## Requirements and tested baseline
 
-The baseline configuration this repository is currently documented against is:
+The supplied workflow is currently developed and tested against this practical baseline:
 
-- Apple Silicon M1-class machine
+- Apple Silicon M1-class Mac or newer
 - 32 GB unified memory
-- macOS
-- Python 3.10 or newer
-- Pillow
-- a working local ComfyUI installation
+- macOS 13 (Ventura) or newer
+- Python 3.10 or newer for `generate_icons.py`
+- Pillow in the Python environment that runs `generate_icons.py`
+- a current local ComfyUI installation
 
-A faster Apple Silicon machine or a suitable CUDA system may also work, but those configurations are not the current reference setup for this repository.
+The **32 GB figure is this project's tested baseline for the bundled FLUX.2 Klein workflow**, not an official ComfyUI minimum. Comfy Desktop itself supports Apple Silicon M1-or-newer Macs on macOS 13 or later. More unified memory is useful for large local batches because the diffusion model, text encoder, VAE, background-removal model, ComfyUI, and macOS all share the same memory pool.
 
-Lower-memory machines may work with smaller generation sizes, but they are not the documented minimum for the supplied workflow.
+A CUDA system may also work, but Apple Silicon is the current reference platform for this repository.
 
-You also need enough disk space for ComfyUI and the model files referenced by `workflow.json`. The model files are **not** included in this repository.
+The model files are not included in this repository.
 
 ---
 
 ## Setup
 
-Clone the repository:
+### 1. Install or update ComfyUI
+
+On Apple Silicon macOS, the simplest supported route is Comfy Desktop:
+
+- [Official Comfy Desktop for macOS installation guide](https://docs.comfy.org/installation/desktop/macos)
+- [Official ComfyUI update guide](https://docs.comfy.org/installation/update_comfyui)
+
+Use a current ComfyUI build. The supplied workflow uses current core FLUX.2 and BiRefNet background-removal nodes.
+
+### 2. Clone Icon Generator
 
 ```bash
 git clone https://github.com/GloriousRedLeader/icon-generator.git
 cd icon-generator
 ```
 
-Install Pillow into the Python environment you will use to run the generator:
+Run the commands in this README from the repository root. The fixed `generated_icons/` output directory is resolved from the shell's current working directory.
+
+### 3. Install Pillow
+
+Install Pillow into the Python environment you use to run `generate_icons.py`:
 
 ```bash
 python3 -m pip install Pillow
 ```
 
-Create your private prompt file from the sample:
+This Python environment does not need to be the same virtual environment used internally by ComfyUI.
+
+### 4. Create your prompt file
 
 ```bash
 cp sample.prompts.json prompts.json
@@ -93,15 +108,21 @@ cp sample.prompts.json prompts.json
 
 Edit `prompts.json` and replace the fictional examples with your own items and prompts.
 
-Before generating anything, make sure ComfyUI is running.
+### 5. Install the workflow models
 
-Then validate the local setup:
+Install the four files listed in the next section in the exact ComfyUI model folders shown there, then restart ComfyUI.
+
+### 6. Validate before generating
+
+With ComfyUI running:
 
 ```bash
 python3 generate_icons.py --check-server
 ```
 
-You can also validate the prompt list and planned outputs without contacting ComfyUI:
+This verifies that the workflow node classes and all four model filenames referenced by `workflow.json` are visible to ComfyUI, and that the ComfyUI queue is idle.
+
+You can also validate the prompt file and generation plan without contacting ComfyUI:
 
 ```bash
 python3 generate_icons.py --dry-run
@@ -117,27 +138,72 @@ The generator talks to an already-running ComfyUI server. By default it expects:
 http://127.0.0.1:8188
 ```
 
-The supplied `workflow.json` currently uses:
+### Required model files
 
-- `flux-2-klein-4b.safetensors`
-- `qwen_3_4b.safetensors`
-- `flux2-vae.safetensors`
-- `birefnet.safetensors`
+The committed `workflow.json` requires exactly these model filenames:
 
-The workflow also uses background-removal / alpha-related node classes including:
+| Model file | Purpose | ComfyUI model folder | Official download |
+| --- | --- | --- | --- |
+| `flux-2-klein-4b.safetensors` | FLUX.2 Klein 4B distilled diffusion model | `models/diffusion_models/` | [Download](https://huggingface.co/Comfy-Org/flux2-klein/resolve/main/split_files/diffusion_models/flux-2-klein-4b.safetensors) |
+| `qwen_3_4b.safetensors` | Qwen 3 4B text encoder | `models/text_encoders/` | [Download](https://huggingface.co/Comfy-Org/flux2-klein/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors) |
+| `flux2-vae.safetensors` | FLUX.2 VAE | `models/vae/` | [Download](https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors) |
+| `birefnet.safetensors` | BiRefNet foreground/background mask model | `models/background_removal/` | [Download](https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors) |
+
+Those download locations come from the official ComfyUI workflow templates for FLUX.2 Klein and BiRefNet.
+
+For a normal manual ComfyUI installation, the resulting layout is:
+
+```text
+<ComfyUI>/
+└── models/
+    ├── diffusion_models/
+    │   └── flux-2-klein-4b.safetensors
+    ├── text_encoders/
+    │   └── qwen_3_4b.safetensors
+    ├── vae/
+    │   └── flux2-vae.safetensors
+    └── background_removal/
+        └── birefnet.safetensors
+```
+
+On Comfy Desktop for macOS, the default shared model library is under `~/ComfyUI-Shared`, so the same files normally appear as:
+
+```text
+~/ComfyUI-Shared/models/
+├── diffusion_models/
+│   └── flux-2-klein-4b.safetensors
+├── text_encoders/
+│   └── qwen_3_4b.safetensors
+├── vae/
+│   └── flux2-vae.safetensors
+└── background_removal/
+    └── birefnet.safetensors
+```
+
+If you configured a different shared model directory, use that directory instead. The important part is that each file is inside the matching model folder that ComfyUI scans.
+
+### Apple Silicon note
+
+The committed workflow intentionally uses:
+
+```text
+flux-2-klein-4b.safetensors
+```
+
+It does **not** use the FP8 variant. The non-FP8 distilled model is the tested path for this repository on Apple Silicon/MPS. Do not substitute `flux-2-klein-4b-fp8.safetensors` unless you have independently verified that your current ComfyUI, PyTorch, and MPS stack supports that FP8 execution path.
+
+### Required nodes
+
+The workflow uses these ComfyUI node classes in addition to the normal FLUX.2 generation nodes:
 
 - `RemoveBackground`
 - `LoadBackgroundRemovalModel`
 - `InvertMask`
 - `JoinImageWithAlpha`
 
-Those models and nodes must already be available in your ComfyUI installation. The Python runner does not download or install them.
+These are current **ComfyUI core** nodes; the supplied workflow does not require a separate background-removal custom-node pack. If `--check-server` reports that one is missing, update ComfyUI first.
 
-If a required node or model is missing, this command should report it before generation:
-
-```bash
-python3 generate_icons.py --check-server
-```
+After installing or changing model files, restart ComfyUI before running `--check-server`.
 
 ### What the runner changes in the workflow
 
@@ -156,7 +222,6 @@ The runner no longer locks the workflow to one exact model recipe. You can chang
 
 `workflow.json` is an **API-format** ComfyUI workflow. The runner consumes it directly.
 
----
 
 ## Prompt file format
 
