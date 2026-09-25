@@ -362,9 +362,8 @@ class UnitTests(unittest.TestCase):
         self.assertEqual(len(prompts), 3)
         self.assertEqual(len({x["filename"] for x in prompts}), 3)
         self.assertTrue(all(x["negative_prompt"] == "" for x in prompts))
-        self.assertTrue(
-            all(x["generation_seeds"] == [101, 102, 103] for x in prompts)
-        )
+        self.assertTrue(all("generation_seeds" not in x for x in prompts))
+        self.assertTrue(all("migration_status" not in x for x in prompts))
 
     def test_filters_and_limit(self):
         args = r.parse_args(["--only", "test_icon", "--limit", "1"])
