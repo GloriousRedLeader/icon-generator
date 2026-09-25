@@ -37,8 +37,8 @@ from typing import Any
 VERSION = "2.0.1"
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_SEEDS = (101, 102, 103)
-DEFAULT_MODEL = "flux-2-klein-4b.safetensors"
 DEFAULT_COMFY_URL = "http://127.0.0.1:8188"
+POLL_SECONDS = 1.0
 # The ComfyUI API graph is intentionally kept in a separate JSON file.
 # Put workflow.json beside this script, or pass --workflow /path/to/file.json.
 DEFAULT_WORKFLOW = SCRIPT_DIR / "workflow.json"
@@ -136,8 +136,6 @@ def select_entries(entries: list[dict[str, Any]], args: argparse.Namespace) -> l
         missing = requested - matched
         if missing:
             raise IconError("Unknown --only value(s): " + ", ".join(sorted(missing)))
-    if args.only_status:
-        selected = [e for e in selected if e.get("migration_status") in args.only_status]
     if args.limit is not None:
         selected = selected[:args.limit]
     return selected
@@ -242,8 +240,9 @@ def set_input(graph: dict[str, Any], node_id: str, field: str, value: Any) -> No
         graph[node_id]["inputs"][field] = value
 
 
-def validate_recipe(graph: dict[str, Any], nodes: dict[str, str], allow_nonstandard: bool = False) -> dict[str, Any]:
-    recipe = {
+def workflow_recipe(graph: dict[str, Any], nodes: dict[str, str]) -> dict[str, Any]:
+    """Return the model/settings declared by the workflow for reporting."""
+    return {
         "model": literal_input(graph, nodes["model"], "unet_name"),
         "text_encoder": literal_input(graph, nodes["clip"], "clip_name"),
         "text_encoder_type": literal_input(graph, nodes["clip"], "type"),
@@ -252,13 +251,6 @@ def validate_recipe(graph: dict[str, Any], nodes: dict[str, str], allow_nonstand
         "cfg": literal_input(graph, nodes["guider"], "cfg"),
         "sampler": literal_input(graph, nodes["method"], "sampler_name"),
     }
-    expected = {"model": DEFAULT_MODEL, "text_encoder": "qwen_3_4b.safetensors", "text_encoder_type": "flux2", "vae": "flux2-vae.safetensors", "steps": 4, "cfg": 1, "sampler": "euler"}
-    problems = [f"{key}={recipe[key]!r}, expected {value!r}" for key, value in expected.items() if recipe[key] != value]
-    if problems and not allow_nonstandard:
-        raise IconError("Workflow is not the four-step distilled recipe. " + "; ".join(problems) + ". Fix workflow.json, or deliberately use --allow-nonstandard-workflow.")
-    if problems:
-        print("WARNING: explicitly allowing a nonstandard recipe: " + "; ".join(problems), flush=True)
-    return recipe
 
 
 def build_workflow(template: dict[str, Any], nodes: dict[str, str], entry: dict[str, Any], seed: int, size: int, prefix: str) -> dict[str, Any]:
@@ -517,14 +509,17 @@ def generate_candidate(args: argparse.Namespace, client: ComfyClient, template: 
             try:
                 outputs = client.completed_outputs(client.history(prior_id), nodes["save"])
             except IconError:
-                if not args.retry_failed:
-                    raise IconError(f"Previous job for {name} failed. Use --retry-failed to request a new run of failed candidates.")
                 outputs = None
             if outputs is not None:
                 print(f"  Recovering completed ComfyUI output for {name}; no new generation.", flush=True)
                 return {**download_and_finalize(client, outputs, nodes, old, paths, args), "action": "recovered-from-history"}
-        if not args.retry_failed:
-            raise IconError(f"{name} has an unfinished/failed submission record. Check ComfyUI, then use --retry-failed after confirming that no old job is still running. The script will not silently submit a duplicate.")
+        if old.get("phase") in {"failed", "interrupted"}:
+            print(f"  Retrying previously {old.get('phase')} candidate: {name}", flush=True)
+        else:
+            raise IconError(
+                f"{name} has an unfinished or uncertain prior submission. "
+                "Check ComfyUI before retrying so the script does not duplicate a job."
+            )
     meta = {"runner_version": VERSION, "filename": name, "original_filename": entry["filename"], "display_name": entry.get("display_name", entry["filename"]), "variant": variant, "seed": seed, "fingerprint": key, "phase": "submitting", "status": "unreviewed", "qa_status": "needs-visual-review", "started_at": utc_now(), "run_id": run_id, "comfy_client_id": client.client_id, "entry": entry, "submitted_workflow": graph, "source_path": str(paths["source"]), "preview_path": str(paths["preview"])}
     save_json(paths["meta"], meta)
     prompt_id = None
@@ -534,7 +529,7 @@ def generate_candidate(args: argparse.Namespace, client: ComfyClient, template: 
         meta.update({"phase": "queued", "prompt_id": prompt_id})
         save_json(paths["meta"], meta)
         print(f"  ComfyUI prompt_id: {prompt_id}", flush=True)
-        outputs = client.wait(prompt_id, nodes["save"], args.poll_seconds)
+        outputs = client.wait(prompt_id, nodes["save"], POLL_SECONDS)
         meta["generation_wait_seconds"] = round(time.monotonic() - start, 3)
         result = download_and_finalize(client, outputs, nodes, meta, paths, args)
         result["action"] = "generated"
@@ -608,15 +603,11 @@ def print_argument_summary(args: argparse.Namespace) -> None:
         ("--comfy-url", args.comfy_url, "ComfyUI server address"),
         ("--seeds", args.seeds, "One candidate per seed"),
         ("--only", args.only, "Generate only named icons"),
-        ("--only-status", args.only_status, "Filter by migration_status"),
         ("--limit", args.limit, "Maximum icons to process"),
         ("--generation-size", args.generation_size, "Model generation size in pixels"),
         ("--target-size", args.target_size, "Local review image size in pixels"),
-        ("--poll-seconds", args.poll_seconds, "Seconds between status checks"),
         ("--overwrite", args.overwrite, "Replace matching existing candidates"),
-        ("--retry-failed", args.retry_failed, "Retry recorded failed candidates"),
         ("--require-alpha", args.require_alpha, "Require real transparent pixels"),
-        ("--allow-nonstandard-workflow", args.allow_nonstandard_workflow, "Allow non-default model/settings"),
         ("--dry-run", args.dry_run, "Validate plan without generating"),
         ("--check-server", args.check_server, "Validate ComfyUI without generating"),
         ("output directory", args.output_root, "Fixed generated output folder"),
@@ -639,15 +630,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--comfy-url", default=DEFAULT_COMFY_URL)
     parser.add_argument("--seeds", type=int, nargs="+", default=None, help="Seed values in candidate suffix order. Default: 101 102 103. One candidate is generated per seed.")
     parser.add_argument("--only", nargs="+", help="Select exact filename, filename stem, or semantic key; e.g. --only frostweave_gloves health_potion")
-    parser.add_argument("--only-status", nargs="+", help="Optional migration_status filter. Default includes every manifest entry, including complete.")
     parser.add_argument("--limit", type=int, help="Maximum number of matching ICONS, not images. --limit 1 makes three candidates by default.")
     parser.add_argument("--generation-size", dest="generation_size", type=int, default=1024, help="Square pixel size sent to the image model. Default: 1024.")
     parser.add_argument("--target-size", dest="target_size", type=int, default=120, help="Square pixel size of the local review image. Default: 120.")
-    parser.add_argument("--poll-seconds", type=float, default=1.0)
     parser.add_argument("--overwrite", action="store_true", help="Explicitly regenerate and replace selected candidate files; never touches repository paths.")
-    parser.add_argument("--retry-failed", action="store_true", help="Retry recorded failed/lost jobs after checking that they are not still active. Complete matching candidates are skipped.")
     parser.add_argument("--require-alpha", action="store_true", help="Require real transparent pixels. Recommended with the supplied BiRefNet + JoinImageWithAlpha workflow.")
-    parser.add_argument("--allow-nonstandard-workflow", action="store_true", help="Explicitly permit a different model/settings in the external workflow; disables the default fast-recipe guard.")
     parser.add_argument("--dry-run", action="store_true", help="Validate and print the plan only; no server connection and no generation.")
     parser.add_argument("--check-server", action="store_true", help="Validate files and installed server models only; no generation.")
     parser.add_argument("--version", action="version", version=VERSION)
@@ -658,8 +645,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--generation-size must be a multiple of 16 between 256 and 2048.")
     if not 1 <= args.target_size <= 2048:
         parser.error("--target-size must be from 1 through 2048.")
-    if not math.isfinite(args.poll_seconds) or args.poll_seconds <= 0:
-        parser.error("--poll-seconds must be a positive finite number.")
     args.seeds = validate_seeds(args.seeds or list(DEFAULT_SEEDS))
     parts = urllib.parse.urlsplit(args.comfy_url)
     if parts.scheme not in {"http", "https"} or not parts.hostname or parts.query or parts.fragment or parts.username or parts.password:
@@ -687,7 +672,7 @@ def main(argv: list[str] | None = None) -> int:
         entries = select_entries(validate_entries(load_json(args.prompt_file)), args)
         template = validate_graph(load_json(args.workflow))
         nodes = discover_nodes(template)
-        recipe = validate_recipe(template, nodes, args.allow_nonstandard_workflow)
+        recipe = workflow_recipe(template, nodes)
         jobs = [(entry, index, seed) for entry in entries for index, seed in enumerate(args.seeds, 1)]
         # Exercise linked prompt/size/seed setters before talking to the server.
         if entries:
