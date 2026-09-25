@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Generate independent, reviewable DNG icon candidates through local ComfyUI.
+"""Generate independent, reviewable game icon candidates through local ComfyUI.
 
 Defaults: the supplied FLUX.2 Klein 4B DISTILLED workflow, 4 steps, CFG 1,
-1024 x 1024, and seeds 101, 1012, 103. Three requests, not a batch of nine.
+1024 x 1024, and seeds 101, 102, 103. Three requests, not a batch of nine.
 
-Run beside prompts_cartoon_v2.json:
-    python3 generate_icons_comfy_v2.py --dry-run
-    python3 generate_icons_comfy_v2.py --only frostweave_gloves
-    python3 generate_icons_comfy_v2.py
+Run beside prompts.json:
+    python3 generate_icons.py --dry-run
+    python3 generate_icons.py --only frostweave_gloves
+    python3 generate_icons.py
 
 No reference images, model downloads, or repository writes.
 The external icon_api_call.json workflow performs BiRefNet background removal and alpha joining.
@@ -36,7 +36,7 @@ from typing import Any
 
 VERSION = "2.0.1"
 SCRIPT_DIR = Path(__file__).resolve().parent
-DEFAULT_SEEDS = (101, 1012, 103)
+DEFAULT_SEEDS = (101, 102, 103)
 DEFAULT_MODEL = "flux-2-klein-4b.safetensors"
 DEFAULT_COMFY_URL = "http://127.0.0.1:8188"
 # The ComfyUI API graph is intentionally kept in a separate JSON file.
@@ -285,7 +285,7 @@ def fingerprint(graph: dict[str, Any], nodes: dict[str, str], preview_size: int)
 
 def request_json(url: str, *, payload: Any = None, timeout: float = 30) -> Any:
     data = None if payload is None else json.dumps(payload).encode("utf-8")
-    headers = {"User-Agent": "DNG-Icon-Runner/" + VERSION}
+    headers = {"User-Agent": "Icon-Generator/" + VERSION}
     if data is not None:
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=data, headers=headers)
@@ -499,13 +499,13 @@ def download_and_finalize(client: ComfyClient, outputs: dict[str, Any], nodes: d
 def generate_candidate(args: argparse.Namespace, client: ComfyClient, template: dict[str, Any], nodes: dict[str, str], entry: dict[str, Any], seed: int, variant: int, run_id: str) -> dict[str, Any]:
     name = candidate_name(entry["filename"], variant)
     paths = candidate_paths(args.output_root, name, args.production_size)
-    prefix = "dng_icons_v2/" + Path(name).stem + "_" + run_id[-8:]
+    prefix = "icon_generator/" + Path(name).stem + "_" + run_id[-8:]
     graph = build_workflow(template, nodes, entry, seed, args.source_size, prefix)
     key = fingerprint(graph, nodes, args.production_size)
     old = load_json(paths["meta"]) if paths["meta"].exists() else None
     if not args.overwrite and (old is not None or paths["source"].exists() or paths["preview"].exists()):
         if not isinstance(old, dict) or old.get("fingerprint") != key:
-            raise IconError(f"{name} already exists for a different or unrecorded recipe. Choose a new --output-root, or deliberately use --overwrite. Nothing was replaced.")
+            raise IconError(f"{name} already exists for a different or unrecorded recipe. Use --overwrite only if you deliberately want to regenerate and replace it. Nothing was replaced.")
         if old.get("phase") in {"complete", "downloaded"} and paths["source"].exists():
             if sha256_file(paths["source"]) != old.get("source_sha256"):
                 raise IconError(f"{name}: source hash changed. Refusing to treat this edited file as the recorded generated source.")
@@ -562,7 +562,7 @@ def generate_candidate(args: argparse.Namespace, client: ComfyClient, template: 
 
 
 def write_gallery(root: Path, entries: list[dict[str, Any]], seeds: list[int], preview_size: int) -> None:
-    parts = ["<!doctype html><html lang='en'><meta charset='utf-8'><title>DNG icon candidates</title>", "<style>body{font:16px system-ui;margin:28px;background:#eceff1;color:#16202b}section{margin:24px 0;padding:20px;background:white;border-radius:10px}.row{display:flex;gap:20px;flex-wrap:wrap}figure{margin:0;width:240px}img{width:220px;height:220px;object-fit:contain;background:repeating-conic-gradient(#eee 0% 25%,white 0% 50%) 50%/20px 20px}.small{width:120px;height:120px}code{overflow-wrap:anywhere}figcaption{margin:8px 0;font-size:14px}</style>", "<h1>DNG icon candidates — not automatically approved</h1><p>Click an image for the exact generated source. Check shape, material, matching pairs, borders and small-size readability. White pixels are not transparency.</p>"]
+    parts = ["<!doctype html><html lang='en'><meta charset='utf-8'><title>Icon candidates</title>", "<style>body{font:16px system-ui;margin:28px;background:#eceff1;color:#16202b}section{margin:24px 0;padding:20px;background:white;border-radius:10px}.row{display:flex;gap:20px;flex-wrap:wrap}figure{margin:0;width:240px}img{width:220px;height:220px;object-fit:contain;background:repeating-conic-gradient(#eee 0% 25%,white 0% 50%) 50%/20px 20px}.small{width:120px;height:120px}code{overflow-wrap:anywhere}figcaption{margin:8px 0;font-size:14px}</style>", "<h1>Icon candidates — not automatically approved</h1><p>Click an image for the exact generated source. Check shape, material, matching pairs, borders and small-size readability. White pixels are not transparency.</p>"]
     for entry in entries:
         figures = []
         for index, seed in enumerate(seeds, 1):
@@ -584,11 +584,11 @@ def write_gallery(root: Path, entries: list[dict[str, Any]], seeds: list[int], p
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate three independent FLUX cartoon candidates per icon; never install into game assets.")
-    parser.add_argument("prompt_file", nargs="?", type=Path, default=SCRIPT_DIR / "prompts_cartoon_v2.json", help="Prompt JSON array; defaults to prompts_cartoon_v2.json beside this script.")
+    parser.add_argument("prompt_file", nargs="?", type=Path, default=SCRIPT_DIR / "prompts.json", help="Prompt JSON array; defaults to prompts.json beside this script.")
     parser.add_argument("--workflow", type=Path, default=DEFAULT_WORKFLOW, help="ComfyUI API-format workflow JSON. Default: icon_api_call.json beside this script.")
     parser.add_argument("--comfy-url", default=DEFAULT_COMFY_URL)
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--seeds", type=int, nargs="+", default=None, help="Seeds, in suffix order. Default: 101 1012 103. One image per supplied seed.")
+    group.add_argument("--seeds", type=int, nargs="+", default=None, help="Seeds, in suffix order. Default: 101 102 103. One image per supplied seed.")
     group.add_argument("--seed", type=int, help="Legacy single-seed option; deliberately generates only one candidate per icon.")
     parser.add_argument("--only", nargs="+", help="Select exact filename, filename stem, or semantic key; e.g. --only frostweave_gloves health_potion")
     parser.add_argument("--only-status", nargs="+", help="Optional migration_status filter. Default includes every manifest entry, including complete.")
@@ -597,7 +597,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--production-size", "--preview-size", dest="production_size", type=int, default=120, help="Local preview size; these are unreviewed previews, NOT installed production assets.")
     parser.add_argument("--timeout", type=float, default=300, help="Maximum wait per submitted image in seconds (default 300). Stop the batch on timeout.")
     parser.add_argument("--poll-seconds", type=float, default=1.0)
-    parser.add_argument("--overwrite", action="store_true", help="Explicitly regenerate and replace selected v2 candidate files; never touches repository paths.")
+    parser.add_argument("--overwrite", action="store_true", help="Explicitly regenerate and replace selected candidate files; never touches repository paths.")
     parser.add_argument("--retry-failed", action="store_true", help="Retry recorded failed/lost jobs after checking that they are not still active. Complete matching candidates are skipped.")
     parser.add_argument("--require-alpha", action="store_true", help="Require real transparent pixels. Recommended with the supplied BiRefNet + JoinImageWithAlpha workflow.")
     parser.add_argument("--allow-nonstandard-workflow", action="store_true", help="Explicitly permit a different model/settings in the external workflow; disables the default fast-recipe guard.")
@@ -617,7 +617,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parts = urllib.parse.urlsplit(args.comfy_url)
     if parts.scheme not in {"http", "https"} or not parts.hostname or parts.query or parts.fragment or parts.username or parts.password:
         parser.error("--comfy-url must be a plain HTTP(S) server address without credentials, query or fragment.")
-    args.output_root = Path("generated_icons_v2").resolve()
+    args.output_root = Path("generated_icons").resolve()
     args.workflow = args.workflow.expanduser().resolve()
     return args
 
@@ -642,8 +642,8 @@ def main(argv: list[str] | None = None) -> int:
         jobs = [(entry, index, seed) for entry in entries for index, seed in enumerate(args.seeds, 1)]
         # Exercise linked prompt/size/seed setters before talking to the server.
         if entries:
-            build_workflow(template, nodes, entries[0], args.seeds[0], args.source_size, "dng_icons_v2/preflight")
-        print(f"DNG icon runner {VERSION}\nPrompts: {args.prompt_file}\nWorkflow: {args.workflow}\nModel: {recipe['model']}\nSteps / CFG: {recipe['steps']} / {recipe['cfg']}\nSize: {args.source_size} x {args.source_size}\nSeeds: {args.seeds}\nIcons: {len(entries)}; candidate images: {len(jobs)}\nOutput: {args.output_root}", flush=True)
+            build_workflow(template, nodes, entries[0], args.seeds[0], args.source_size, "icon_generator/preflight")
+        print(f"Icon generator {VERSION}\nPrompts: {args.prompt_file}\nWorkflow: {args.workflow}\nModel: {recipe['model']}\nSteps / CFG: {recipe['steps']} / {recipe['cfg']}\nSize: {args.source_size} x {args.source_size}\nSeeds: {args.seeds}\nIcons: {len(entries)}; candidate images: {len(jobs)}\nOutput: {args.output_root}", flush=True)
         print("Images are unreviewed candidates. Background removal is performed only if the external workflow contains it; no game-asset replacement is performed.", flush=True)
         if args.dry_run:
             for entry in entries:
