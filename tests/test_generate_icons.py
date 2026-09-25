@@ -73,6 +73,7 @@ class MockComfy:
                         ("UNETLoader", "unet_name", r.literal_input(TEST_WORKFLOW, TEST_NODES["model"], "unet_name")),
                         ("CLIPLoader", "clip_name", "qwen_3_4b.safetensors"),
                         ("VAELoader", "vae_name", "flux2-vae.safetensors"),
+                        ("LoadBackgroundRemovalModel", "bg_removal_name", "birefnet.safetensors"),
                     ):
                         info[cls]["input"]["required"][field] = [
                             [value] if not owner.missing_model else []
