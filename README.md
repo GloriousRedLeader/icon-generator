@@ -446,7 +446,8 @@ generated_icons/
 The review page:
 
 - groups candidates by icon name
-- displays the candidate set in a row
+- dynamically detects every numbered candidate present for an icon, so `_1` through `_5`, `_10`, or any other generated count are all shown
+- displays the full candidate set in one horizontally scrollable row
 - prefers the resized `preview_<size>` images for visual review
 - shows seed and available metadata
 - lets you click one candidate to select it
