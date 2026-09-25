@@ -6,7 +6,7 @@
     },
     "class_type": "UNETLoader",
     "_meta": {
-      "title": "Model - FLUX.2 Klein BASE 4B"
+      "title": "Model - FLUX.2 Klein 4B Distilled"
     }
   },
   "2": {
@@ -49,11 +49,11 @@
   },
   "6": {
     "inputs": {
-      "value": "A hand-painted cartoon fantasy RPG inventory icon of a matching pair of fully enclosed iron gauntlets, arranged in a compact, staggered diagonal composition. Both gauntlets have iron-covered fingers, iron-covered thumbs, broad iron hand plates, and matching iron cuffs.\n\nThe gauntlet on the left sits slightly lower and closer to the viewer, its fingers pointing toward the upper left. The gauntlet on the right sits slightly higher and farther back, its fingers pointing toward the upper right. Show the backs of both gauntlets from a three-quarter angle. Their cuffs overlap slightly near the lower center, while their hands and fingers remain clearly separate.\n\nEach gauntlet has four fingers arranged together across the top of the hand: index, middle, ring and little finger. The middle finger is longest. The little finger is shorter and slimmer, positioned immediately beside the ring finger. These four fingers form one compact group with narrow gaps between them. The little finger follows the direction of the ring finger rather than sticking sideways. All four fingers extend from the knuckle row and curve gently forward in a relaxed pose.\n\nEach gauntlet has exactly one short, broad thumb attached lower down on the side of the hand. The thumbs face inward toward the gap between the gauntlets: the left pictured gauntlet has its thumb on its right side, and the right pictured gauntlet has its thumb on its left side. Each thumb curves gently upward toward its index finger and ends in a rounded, enclosed metal tip. The outer edge of each hand runs smoothly from the wrist to the little finger.\n\nEvery finger and thumb is fully covered in articulated dark iron-grey armor. Small overlapping iron plates follow the joints from the knuckles to the fingertips. Each fingertip ends in a smooth, plain, rounded iron cap: one continuous domed metal surface with broad painted highlights. The top surface of each cap is uninterrupted and undecorated. Its only seam is along its lower edge, where it overlaps the next finger segment. The thumbs have the same smooth, plain metal caps. Broad curved iron plates protect the backs of the hands. The hands narrow naturally into the wrists.\n\nBoth gauntlets have identical short, flared iron cuffs. The entire outside of both cuffs is dark iron-grey metal with matching silvery rims. Each cuff has one narrow brown leather fastening strap near the wrist. Brown leather is restricted to these narrow straps and tiny recessed gaps between moving plates. The large cuff surfaces and all finger plates remain iron. Matching rivets, subtle scratches on the broad hand plates, and a few hammer marks suggest sturdy, practical equipment.\n\nPolished cartoon game art with chunky readable silhouettes, clean dark outlines, crisp charcoal shadows and bright painted metallic highlights. Clear separation between hard iron and flexible leather. Simple, coherent armor construction that remains readable as a small inventory icon.\n\nOnly the complete pair of unworn gauntlets on a plain white background, with generous clear space around all edges. No wearer, arms, weapons, lettering, border or additional objects."
+      "value": "A hand-painted cartoon fantasy RPG inventory icon of one simple bronze compass with a dark leather strap, clean dark outlines, broad painted highlights, and a chunky readable silhouette. Center the complete object on a plain white background with generous clear space around every edge. No hands, character, scenery, text, border, or additional objects."
     },
     "class_type": "PrimitiveStringMultiline",
     "_meta": {
-      "title": "PROMPT - iron gauntlets (already filled in)"
+      "title": "PROMPT - replaced by generate_icons.py"
     }
   },
   "7": {
@@ -91,7 +91,7 @@
     },
     "class_type": "RandomNoise",
     "_meta": {
-      "title": "SEED - change noise_seed for another attempt"
+      "title": "SEED - overridden by generate_icons.py"
     }
   },
   "10": {
@@ -112,7 +112,7 @@
     },
     "class_type": "CFGGuider",
     "_meta": {
-      "title": "GUIDANCE - cfg = 4"
+      "title": "GUIDANCE - cfg = 1"
     }
   },
   "11": {
@@ -138,7 +138,7 @@
     },
     "class_type": "Flux2Scheduler",
     "_meta": {
-      "title": "STEPS - 50"
+      "title": "STEPS - 4"
     }
   },
   "13": {
@@ -204,7 +204,7 @@
   },
   "16": {
     "inputs": {
-      "filename_prefix": "diagnostics/iron_gauntlets_flux2_base",
+      "filename_prefix": "icon_generator/candidate",
       "images": [
         "22:20",
         0
