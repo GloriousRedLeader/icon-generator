@@ -194,7 +194,7 @@ class UnitTests(unittest.TestCase):
         self.assertEqual(args.output_root.name, "generated_icons")
         self.assertEqual(args.seeds, [101, 102, 103])
         self.assertEqual(args.generation_size, 1024)
-        self.assertEqual(args.target_size, 120)
+        self.assertEqual(args.target_size, 96)
         self.assertFalse(hasattr(args, "seed"))
         self.assertFalse(hasattr(args, "timeout"))
         self.assertFalse(hasattr(args, "only_status"))
@@ -336,7 +336,7 @@ class UnitTests(unittest.TestCase):
         with self.assertRaises(r.IconError):
             r.validate_graph({"nodes": [], "links": []})
 
-    def test_fingerprint_ignores_output_prefix_not_seed(self):
+    def test_fingerprint_ignores_output_prefix_and_review_size_not_seed(self):
         a = r.build_workflow(
             self.graph, self.nodes, example(), 101, 1024, "first"
         )
@@ -347,12 +347,25 @@ class UnitTests(unittest.TestCase):
             self.graph, self.nodes, example(), 103, 1024, "second"
         )
         self.assertEqual(
-            r.fingerprint(a, self.nodes, 120),
-            r.fingerprint(b, self.nodes, 120),
+            r.fingerprint(a, self.nodes),
+            r.fingerprint(b, self.nodes),
         )
         self.assertNotEqual(
-            r.fingerprint(a, self.nodes, 120),
-            r.fingerprint(c, self.nodes, 120),
+            r.fingerprint(a, self.nodes),
+            r.fingerprint(c, self.nodes),
+        )
+        self.assertNotEqual(
+            r.legacy_fingerprint(a, self.nodes, 96),
+            r.legacy_fingerprint(a, self.nodes, 120),
+        )
+
+    def test_previous_target_size_reads_legacy_metadata(self):
+        self.assertEqual(
+            r.previous_target_size({"preview": {"dimensions": [120, 120]}}),
+            120,
+        )
+        self.assertIsNone(
+            r.previous_target_size({"preview": {"dimensions": [120, 96]}})
         )
 
     def test_sample_prompt_file(self):
@@ -440,10 +453,10 @@ class IntegrationTests(unittest.TestCase):
                 seed,
             )
             source = self.results / "source" / f"test_icon_{variant}.png"
-            preview = self.results / "preview_120" / source.name
+            preview = self.results / "preview_96" / source.name
             self.assertTrue(source.exists())
             self.assertEqual(
-                r.inspect_image(preview)["dimensions"], [120, 120]
+                r.inspect_image(preview)["dimensions"], [96, 96]
             )
             self.assertTrue(
                 r.inspect_image(source)["real_transparency"]
@@ -459,11 +472,23 @@ class IntegrationTests(unittest.TestCase):
 
     def test_reconstruct_missing_preview_without_generation(self):
         self.assertEqual(self.run_script(), 0)
-        preview = self.results / "preview_120" / "test_icon_2.png"
+        preview = self.results / "preview_96" / "test_icon_2.png"
         preview.unlink()
         self.assertEqual(self.run_script(), 0)
         self.assertTrue(preview.exists())
         self.assertEqual(len(self.server.graphs), 3)
+
+    def test_changing_target_size_reuses_source_without_generation(self):
+        self.assertEqual(self.run_script(), 0)
+        self.assertEqual(len(self.server.graphs), 3)
+
+        self.assertEqual(self.run_script(["--target-size", "120"]), 0)
+        self.assertEqual(len(self.server.graphs), 3)
+        preview = self.results / "preview_120" / "test_icon_2.png"
+        self.assertTrue(preview.exists())
+        self.assertEqual(
+            r.inspect_image(preview)["dimensions"], [120, 120]
+        )
 
     def test_changed_prompt_refuses_overwrite(self):
         self.assertEqual(self.run_script(), 0)
