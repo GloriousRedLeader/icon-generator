@@ -103,6 +103,36 @@ Generate one specific icon by filename stem, filename, or semantic key:
 python3 generate_icons.py --only starfall_sabre
 ```
 
+## Startup display
+
+Every normal invocation starts with an ASCII `ICON GENERATOR` banner, one blank line, then a complete list of the effective program arguments and fixed output directory. A separator line follows before validation, generation progress, or errors begin.
+
+For example:
+
+```text
+  ___ ___ ___  _  _    ___ ___ _  _ ___ ___    _ _____ ___  ___
+ |_ _/ __/ _ \\| \\| |  / __| __| \\| | __| _ \\  /_\\_   _/ _ \\| _ \\
+  | | (_| (_) | .` | | (_ | _|| .` | _||   / / _ \\| || (_) |   /
+ |___\\___\\___/|_|\\_|  \\___|___|_|\\_|___|_|_\\/_/ \\_\\_| \\___/|_|_\\
+
+Arguments:
+  prompt_file                  /path/to/icon-generator/prompts.json
+  --workflow                   /path/to/icon-generator/icon_api_call.json
+  --comfy-url                  http://127.0.0.1:8188
+  --seeds                      101 102 103
+  --seed                       (not set)
+  ...
+  output directory (fixed)     /path/to/icon-generator/generated_icons
+
+------------------------------------------------------------------------
+
+Model: flux-2-klein-4b.safetensors
+Steps / CFG: 4 / 1
+...
+```
+
+This makes the exact effective settings visible at the start of each run before the normal output or any runtime error messages.
+
 ## Default candidates and seeds
 
 By default, each icon is generated three times as three independent ComfyUI requests:
