@@ -1,239 +1,639 @@
-# DNG Icons v2
+# Icon Generator
 
-## What to use
+Icon Generator is a local batch tool for creating multiple game-icon candidates through ComfyUI, reviewing them at game UI size, and exporting your approval choices.
 
-The two working files are:
+## Why This Exists
 
-- `generate_icons_comfy_v2.py` — the complete runner, with your working four-step FLUX API workflow included inside it.
-- `prompts_cartoon_v2.json` — all **121 targets from your supplied `prompts_full.json`**, rewritten for the outlined, dimensional cartoon style of the gauntlet example.
+This project exists because asking Gemini, ChatGPT, or Claude to produce a hundred consistently sized game icons is apparently the computational equivalent of asking three extremely confident interns to assemble a nuclear reactor from a Pinterest board. They can generate one beautiful image, explain image dimensions at tremendous length, and then immediately forget both the dimensions and the image. Ask for a large batch and, somewhere around icon 17, filenames mutate, aspect ratios wander off, transparency becomes a philosophical question, and the entire operation develops the administrative stability of a collapsing government. Icon Generator was created so the computer can do the same boring thing correctly hundreds of times without needing to be reminded what “120×120” means.
 
-The `reference/` and `tests/` folders are documentation and verification material. They are not additional workflows to load.
+The current default review target is `96 × 96`; the line above is retained as the historical joke that caused this project to exist.
 
-**Do not drag these files onto the ComfyUI canvas. Do not press ComfyUI's Run button for the scripted batch.** Keep ComfyUI open; run the Python script in Terminal. The script submits jobs to your existing local ComfyUI server.
+It is designed for workflows where you have a JSON list of item names and image prompts and want a repeatable way to:
 
-## Start here
+- generate several candidates for every icon
+- keep the exact generated source PNGs
+- create smaller review copies
+- preserve metadata such as prompt, seed, and workflow
+- review candidate sets in a browser
+- export your selected choices as JSON
 
-1. Extract `DNG_Icons_v2.zip` into Downloads. Keep the extracted folder name `DNG_Icons_v2`.
-2. Open ComfyUI and let any existing run finish. Do not change its model files or install another model.
-3. Open Terminal and enter:
+The tool does **not** copy anything into your game's asset folders. Generation and review are intentionally separate from asset installation.
 
-```bash
-cd ~/Downloads/DNG_Icons_v2
+## Repository contents
+
+```text
+icon-generator/
+├── generate_icons.py       Main batch generator
+├── workflow.json           ComfyUI API-format workflow
+├── sample.prompts.json     Three fictional example prompts
+├── icon_review.html        Standalone review / approval tool
+├── tests/
+│   └── test_generate_icons.py
+├── README.md
+└── .gitignore
 ```
 
-First, check the entire plan without generating images:
+Your own prompt file is normally:
 
-```bash
-python3 generate_icons_comfy_v2.py --dry-run
+```text
+prompts.json
 ```
 
-This should report **121 icons, 363 candidate images**, using seeds **101, 1012, 103**.
+That file is ignored by Git so project-specific prompts do not need to be published.
 
-Generate just the first icon's three candidates:
+Generated files always go under:
 
-```bash
-python3 generate_icons_comfy_v2.py --limit 1
+```text
+generated_icons/
 ```
 
-The first icon in the file is Aegis Knuckles. This creates `aegis_knuckles_1.png`, `aegis_knuckles_2.png`, and `aegis_knuckles_3.png`.
+That folder is also ignored by Git.
 
-To run the full prompt file:
+---
+
+## Requirements and tested baseline
+
+The supplied workflow is currently developed and tested against this practical baseline:
+
+- Apple Silicon M1-class Mac or newer
+- 32 GB unified memory
+- macOS 13 (Ventura) or newer
+- Python 3.10 or newer for `generate_icons.py`
+- Pillow in the Python environment that runs `generate_icons.py`
+- a current local ComfyUI installation
+
+The **32 GB figure is this project's tested baseline for the bundled FLUX.2 Klein workflow**, not an official ComfyUI minimum. Comfy Desktop itself supports Apple Silicon M1-or-newer Macs on macOS 13 or later. More unified memory is useful for large local batches because the diffusion model, text encoder, VAE, background-removal model, ComfyUI, and macOS all share the same memory pool.
+
+A CUDA system may also work, but Apple Silicon is the current reference platform for this repository.
+
+The model files are not included in this repository.
+
+---
+
+## Setup
+
+### 1. Install or update ComfyUI
+
+On Apple Silicon macOS, the simplest supported route is Comfy Desktop:
+
+- [Official Comfy Desktop for macOS installation guide](https://docs.comfy.org/installation/desktop/macos)
+- [Official ComfyUI update guide](https://docs.comfy.org/installation/update_comfyui)
+
+Use a current ComfyUI build. The supplied workflow uses current core FLUX.2 and BiRefNet background-removal nodes.
+
+### 2. Clone Icon Generator
 
 ```bash
-python3 generate_icons_comfy_v2.py
+git clone https://github.com/GloriousRedLeader/icon-generator.git
+cd icon-generator
 ```
 
-The full command processes every manifest entry, including the entries marked `complete` in the old migration. All output is kept in a separate candidate folder. It never writes to the repository paths stored in the prompt metadata. Completed, unchanged v2 candidates are verified and skipped, so the first three images need not be regenerated after the small test.
+Run the commands in this README from the repository root. The fixed `generated_icons/` output directory is resolved from the shell's current working directory.
 
-To run one specific icon instead:
+### 3. Install Pillow
 
-```bash
-python3 generate_icons_comfy_v2.py --only frostweave_gloves
-```
-
-This is still three candidates of that icon, not three copies of the same seed.
-
-### Python requirement
-
-Use Python 3.10 or later and Pillow. Pillow was already a dependency of your original runner. If your Terminal Python does not have it, use the same environment that ran the original script, or install it into this Python environment:
+Install Pillow into the Python environment you use to run `generate_icons.py`:
 
 ```bash
 python3 -m pip install Pillow
 ```
 
-The runner does not import PyTorch, load diffusion weights, or run image generation itself. The existing ComfyUI process does that work. It needs no API key, Hugging Face requests, or paid service.
+This Python environment does not need to be the same virtual environment used internally by ComfyUI.
 
-## Three seeds, three images total per icon
+### 4. Create your prompt file
 
-The defaults are exactly the numbers requested:
-
-| Suffix | Seed |
-| --- | ---: |
-| `_1.png` | 101 |
-| `_2.png` | 1012 |
-| `_3.png` | 103 |
-
-`1012` has intentionally not been changed to `102`.
-
-For `frostweave_gloves.png`, the saved candidate names are:
-
-```text
-frostweave_gloves_1.png
-frostweave_gloves_2.png
-frostweave_gloves_3.png
+```bash
+cp sample.prompts.json prompts.json
 ```
 
-Each candidate is a separate API request with `batch_size = 1`. The script waits for it, saves it, then submits the next seed. It does not ask for a three-image batch for each seed, and it does not queue all 363 images at once.
+Edit `prompts.json` and replace the fictional examples with your own items and prompts.
 
-### The fixed seed in the canvas is not a lock
+### 5. Install the workflow models
 
-In this workflow the seed belongs to the `RandomNoise` node, input `noise_seed`. The runner writes 101, 1012, or 103 into a copy of that graph before submitting it. The canvas's `control after generate = fixed` setting does not override the value supplied by the API.
+Install the four files listed in the next section in the exact ComfyUI model folders shown there, then restart ComfyUI.
 
-The code also follows the positive text encoder's input to the large `PrimitiveStringMultiline` prompt box. It replaces that box's value, rather than searching for the old SDXL `KSampler` or relying on misleading node titles.
+### 6. Validate before generating
 
-## Model and settings
+With ComfyUI running:
 
-The embedded graph preserves the actual working values in your uploaded API export:
+```bash
+python3 generate_icons.py --check-server
+```
 
-| Setting | Value |
+This verifies that the workflow node classes and all four model filenames referenced by `workflow.json` are visible to ComfyUI, and that the ComfyUI queue is idle.
+
+You can also validate the prompt file and generation plan without contacting ComfyUI:
+
+```bash
+python3 generate_icons.py --dry-run
+```
+
+---
+
+## ComfyUI setup
+
+The generator talks to an already-running ComfyUI server. By default it expects:
+
+```text
+http://127.0.0.1:8188
+```
+
+### Required model files
+
+The committed `workflow.json` requires exactly these model filenames:
+
+| Model file | Purpose | ComfyUI model folder | Official download |
+| --- | --- | --- | --- |
+| `flux-2-klein-4b.safetensors` | FLUX.2 Klein 4B distilled diffusion model | `models/diffusion_models/` | [Download](https://huggingface.co/Comfy-Org/flux2-klein/resolve/main/split_files/diffusion_models/flux-2-klein-4b.safetensors) |
+| `qwen_3_4b.safetensors` | Qwen 3 4B text encoder | `models/text_encoders/` | [Download](https://huggingface.co/Comfy-Org/flux2-klein/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors) |
+| `flux2-vae.safetensors` | FLUX.2 VAE | `models/vae/` | [Download](https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors) |
+| `birefnet.safetensors` | BiRefNet foreground/background mask model | `models/background_removal/` | [Download](https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors) |
+
+Those download locations come from the official ComfyUI workflow templates for FLUX.2 Klein and BiRefNet.
+
+For a normal manual ComfyUI installation, the resulting layout is:
+
+```text
+<ComfyUI>/
+└── models/
+    ├── diffusion_models/
+    │   └── flux-2-klein-4b.safetensors
+    ├── text_encoders/
+    │   └── qwen_3_4b.safetensors
+    ├── vae/
+    │   └── flux2-vae.safetensors
+    └── background_removal/
+        └── birefnet.safetensors
+```
+
+On Comfy Desktop for macOS, the default shared model library is under `~/ComfyUI-Shared`, so the same files normally appear as:
+
+```text
+~/ComfyUI-Shared/models/
+├── diffusion_models/
+│   └── flux-2-klein-4b.safetensors
+├── text_encoders/
+│   └── qwen_3_4b.safetensors
+├── vae/
+│   └── flux2-vae.safetensors
+└── background_removal/
+    └── birefnet.safetensors
+```
+
+If you configured a different shared model directory, use that directory instead. The important part is that each file is inside the matching model folder that ComfyUI scans.
+
+### Apple Silicon note
+
+The committed workflow intentionally uses:
+
+```text
+flux-2-klein-4b.safetensors
+```
+
+It does **not** use the FP8 variant. The non-FP8 distilled model is the tested path for this repository on Apple Silicon/MPS. Do not substitute `flux-2-klein-4b-fp8.safetensors` unless you have independently verified that your current ComfyUI, PyTorch, and MPS stack supports that FP8 execution path.
+
+### Required nodes
+
+The workflow uses these ComfyUI node classes in addition to the normal FLUX.2 generation nodes:
+
+- `RemoveBackground`
+- `LoadBackgroundRemovalModel`
+- `InvertMask`
+- `JoinImageWithAlpha`
+
+These are current **ComfyUI core** nodes; the supplied workflow does not require a separate background-removal custom-node pack. If `--check-server` reports that one is missing, update ComfyUI first.
+
+After installing or changing model files, restart ComfyUI before running `--check-server`.
+
+### What the runner changes in the workflow
+
+For each candidate, `generate_icons.py` loads `workflow.json` and changes only the values needed for that request:
+
+- positive prompt
+- negative prompt
+- seed
+- generation width and height
+- batch size, fixed to one image
+- output filename prefix
+
+The model, sampler, steps, CFG, VAE, text encoder, background removal, and other workflow settings come from `workflow.json`.
+
+The runner no longer locks the workflow to one exact model recipe. You can change the model/settings in `workflow.json`, provided the workflow keeps the node structure the runner expects for prompt, seed, size, sampling, and output discovery.
+
+`workflow.json` is an **API-format** ComfyUI workflow. The runner consumes it directly.
+
+
+## Prompt file format
+
+The prompt file is a JSON array.
+
+The required fields for each entry are:
+
+- `filename` — plain PNG filename, for example `starfall_sabre.png`
+- `positive_prompt` — the generation prompt
+
+`negative_prompt` is optional and may be an empty string.
+
+Useful optional metadata includes:
+
+- `display_name`
+- `semantic_key`
+- `repository_target_path`
+- any other project-specific fields you want preserved in candidate metadata
+
+Example:
+
+```json
+[
+  {
+    "filename": "starfall_sabre.png",
+    "semantic_key": "ui.item.starfall_sabre",
+    "display_name": "Starfall Sabre",
+    "repository_target_path": "Assets/Icons/Items/starfall_sabre.png",
+    "positive_prompt": "A hand-painted cartoon fantasy RPG inventory icon of one elegant curved steel sabre on a clean white background.",
+    "negative_prompt": ""
+  }
+]
+```
+
+See `sample.prompts.json` for three complete fictional examples.
+
+If your prompt JSON contains a `generation_seeds` metadata field, it is preserved as metadata only. Actual generation seeds are controlled by the runner's `--seeds` option.
+
+---
+
+## Basic usage
+
+### Generate everything
+
+```bash
+python3 generate_icons.py
+```
+
+By default, every icon gets three candidates using seeds:
+
+```text
+101
+102
+103
+```
+
+For:
+
+```text
+starfall_sabre.png
+```
+
+the generator creates managed candidate names:
+
+```text
+starfall_sabre_1.png
+starfall_sabre_2.png
+starfall_sabre_3.png
+```
+
+### Generate one icon
+
+You can select an icon by filename, filename stem, or semantic key:
+
+```bash
+python3 generate_icons.py --only starfall_sabre
+```
+
+### Generate only the first N icons
+
+For a quick test:
+
+```bash
+python3 generate_icons.py --limit 1
+```
+
+Or:
+
+```bash
+python3 generate_icons.py --limit 10
+```
+
+### Change the number of candidates
+
+`--seeds` accepts one or more seed values.
+
+One candidate per icon:
+
+```bash
+python3 generate_icons.py --seeds 101
+```
+
+Three candidates:
+
+```bash
+python3 generate_icons.py --seeds 101 102 103
+```
+
+Five candidates:
+
+```bash
+python3 generate_icons.py --seeds 101 102 103 104 105
+```
+
+One candidate is generated for each supplied seed.
+
+### Use a smaller generation size
+
+The default generation size is 1024 × 1024.
+
+For faster generation on constrained hardware:
+
+```bash
+python3 generate_icons.py --generation-size 768
+```
+
+Or:
+
+```bash
+python3 generate_icons.py --generation-size 640
+```
+
+The generation size must be a multiple of 16 between 256 and 2048.
+
+### Change the review target size
+
+The default local review image is 96 × 96:
+
+```bash
+python3 generate_icons.py --target-size 96
+```
+
+This does not change the model generation resolution. It changes the resized review copy written after generation.
+
+Changing only `--target-size` does not require regenerating the AI source image. The runner reuses the existing generated source and rebuilds the derived review image at the new size.
+
+### Require transparency
+
+The supplied workflow performs background removal and joins an alpha channel.
+
+To make the runner reject a result that does not contain real transparent pixels:
+
+```bash
+python3 generate_icons.py --require-alpha
+```
+
+This flag is a validation check. It does not run an additional background-removal pass.
+
+### Use a different ComfyUI address
+
+```bash
+python3 generate_icons.py --comfy-url http://127.0.0.1:8188
+```
+
+### Use a different compatible workflow file
+
+```bash
+python3 generate_icons.py --workflow /path/to/workflow.json
+```
+
+---
+
+## Command-line options
+
+| Argument | What it does |
 | --- | --- |
-| Diffusion model | `flux-2-klein-4b.safetensors` — distilled, not Base |
-| Text encoder | `qwen_3_4b.safetensors`, type `flux2` |
-| VAE | `flux2-vae.safetensors` |
-| Steps | 4 |
-| CFG | 1 |
-| Sampler | Euler |
-| Size | 1024 × 1024 |
-| Latent batch size | 1 |
-| Negative prompt | Empty |
-| Input/reference images | None |
+| `prompt_file` | Prompt JSON file. Defaults to `prompts.json` beside the script. |
+| `--workflow` | ComfyUI API workflow. Defaults to `workflow.json`. |
+| `--comfy-url` | Address of the running ComfyUI server. |
+| `--seeds` | Seed values. One candidate is generated per seed. |
+| `--only` | Generate only specific filenames, filename stems, or semantic keys. |
+| `--limit` | Process only the first N matching icons. |
+| `--generation-size` | Square resolution sent to the image model. Default 1024. |
+| `--target-size` | Square size of the local review image. Default 96. |
+| `--overwrite` | Deliberately regenerate and replace selected existing candidates. |
+| `--require-alpha` | Fail a candidate if the downloaded PNG has no real transparency. |
+| `--dry-run` | Validate and print the generation plan without contacting ComfyUI. |
+| `--check-server` | Validate the workflow, required ComfyUI nodes, models, and queue without generating. |
+| `--version` | Print the runner version. |
 
-The old titles saying “BASE,” “50,” or “cfg = 4” are not actual settings. They were corrected inside the embedded copy without changing the working generation values.
+The ComfyUI status poll interval is fixed internally at one second. It is intentionally not configurable.
 
-The script checks that the required nodes and selected model filenames exist on your running server before submitting a job. It does not download, rename, or substitute models.
+There is no generation-duration timeout. Once a candidate has been submitted, the runner waits until ComfyUI finishes, reports an error, the connection repeatedly fails, or you interrupt the process.
 
-An optional `--workflow path/to/export.json` accepts a single-output **API-format export** of this FLUX architecture. It is unnecessary for the supplied package. A visual-editor JSON, SDXL graph, Base model, or unexpected 50-step recipe is rejected rather than silently used. Nonstandard model/settings require the explicit `--allow-nonstandard-workflow` flag.
+---
 
-## Where the results go
+## Output
 
-After a run, open:
-
-```text
-generated_icons_v2/review.html
-```
-
-It is an ordinary local web page. It shows the saved candidates for the current command's selection and their small previews; clicking a candidate opens the full-resolution source. Do not judge a scripted run from the old picture still displayed in a manually opened ComfyUI canvas tab.
-
-Files are organized as:
+Generated files are always stored under:
 
 ```text
-generated_icons_v2/
-    source/          Exact PNG bytes downloaded from ComfyUI, normally 1024 × 1024
-    preview_120/     120 × 120 Lanczos resizes of those same images
-    metadata/        One JSON record per candidate, including seed and full submitted graph
-    reports/         Timestamped run reports and latest_run.json
-    review.html      Local visual review page
+generated_icons/
+├── source/
+├── preview_96/
+├── metadata/
+├── reports/
+└── review.html
 ```
 
-The exact `_1`, `_2`, `_3` names apply to the files managed by this script in `source/` and `preview_120/`. ComfyUI also retains its own native Save Image copies with its automatic counter; those native filenames are recorded in the metadata. The runner downloads the selected output and gives the managed copy the exact requested name.
+If you generate more than one target size over time, multiple preview folders can coexist, for example:
 
-## These are candidates, not approved production icons
+```text
+preview_96/
+preview_120/
+preview_256/
+```
 
-The prompt set follows the requested cartoon treatment: strong dark outlines, chunky silhouettes, clean material boundaries, bright painted highlights, simple shaded planes, controlled magical accents, and item-appropriate angled compositions.
+Changing only `--target-size` reuses the existing generated source PNGs and creates or rebuilds the corresponding `preview_<size>/` folder. It does not rerun the image model.
 
-The prompts are specific to each item. A cloth glove remains cloth; a vambrace remains a forearm guard; a scroll remains parchment; the gauntlet example does not make everything metal armor. Equipment pairs use matching materials and cuffs. Handwear prompts explicitly separate four finger stalls from the thumb and describe plain caps rather than nail-shaped panels.
+### `source/`
 
-**None of that guarantees correct construction.** All generated results are marked `rendered-unreviewed` / `needs-visual-review`, not approved. Check the images for wrong objects, crossed or fused fingers, false nail panels, mismatched pairs, cropped silhouettes, and readability at game size. The software validates files and workflow values, not visual anatomy.
+Contains the exact PNG bytes downloaded from ComfyUI.
 
-### Transparency
+### `preview_<size>/`
 
-Your uploaded FLUX workflow decodes and saves an image without background removal. This package deliberately preserves that generation stage.
+Contains resized review copies using high-quality Lanczos resampling.
 
-**A white background is not a transparent background.** The 120-pixel outputs are unreviewed previews, not final transparent game assets. The runner does no segmentation, masking, recoloring, cropping, alpha invention, or automatic asset installation. Source bytes are preserved exactly; previews are resizes only. It records whether real transparent pixels are present.
+### `metadata/`
 
-`--require-alpha` remains available for a deliberately supplied alpha-producing workflow, but it refuses the embedded opaque workflow before spending a generation. Background removal and approval remain separate from this candidate batch.
+Contains one JSON file per candidate, including information such as:
 
-## Restarting, stopping, and protecting time
+- seed
+- prompt entry
+- submitted workflow
+- source and preview paths
+- image dimensions
+- transparency information
+- hashes
+- timing
 
-A normal rerun verifies existing candidates against their prompt, seed, graph settings, and file hashes, then skips matches. A missing local preview can be rebuilt from its source without another generation. A finished server job whose image was not downloaded can be recovered from ComfyUI history while that history remains available.
+### `reports/`
 
-A changed prompt or seed set using the same suffix filenames is a conflict, not an automatic overwrite. Use a fresh output folder for a new revision:
+Contains run summaries, including `latest_run.json`.
+
+### `review.html`
+
+A simple gallery generated by the Python runner.
+
+---
+
+## Failure and resume behavior
+
+The generator processes candidates sequentially.
+
+If a generation or runtime operation fails, the batch stops immediately. It does not continue submitting later candidates after a failure.
+
+Successfully completed candidates are kept.
+
+When you run the command again:
+
+- matching completed candidates are verified and reused
+- missing review copies can be rebuilt from an existing source image
+- completed ComfyUI history can be recovered when available
+- candidates explicitly recorded as failed or interrupted can be attempted again
+- an uncertain prior submission is **not** blindly duplicated
+
+This is designed to protect long batches from wasting completed work.
+
+If an existing source candidate belongs to a different prompt, seed, workflow, or generation size, the runner refuses to silently replace it. A different `--target-size` is safe because it changes only the derived review image, not the generated source.
+
+To deliberately replace selected candidates:
 
 ```bash
-python3 generate_icons_comfy_v2.py --only frostweave_gloves --output-root generated_icons_revision_2
+python3 generate_icons.py --only starfall_sabre --overwrite
 ```
 
-`--overwrite` is an explicit request to regenerate and replace selected v2 candidate files. It still does not write to game assets.
+Press Control+C to stop the current run. The runner does not clear unrelated ComfyUI jobs.
 
-The default wait limit is **300 seconds per submitted image**. This is a wait budget, not a promised runtime; server checks, model loading/submission and downloading also have bounded network waits. On a timeout or error the script stops the batch instead of continuing to queue more expensive work. When possible it requests cancellation for its own `prompt_id`; a GPU operation may not stop instantly, so check ComfyUI after a timeout.
+---
 
-Press **Control+C in Terminal** to stop. The script will not clear the entire ComfyUI queue. It refuses to start while other jobs are active.
+## Reviewing and approving icons
 
-A failed/unfinished submission is not blindly repeated. After checking ComfyUI and confirming that no old job is running, use:
+The repository includes a standalone browser review tool:
+
+```text
+icon_review.html
+```
+
+Open that file directly in your browser.
+
+### 1. Load the top-level generated folder
+
+Click **1. Load generated_icons folder** and choose:
+
+```text
+generated_icons/
+```
+
+Choose the top-level folder, not an individual `preview_<size>` folder. The review tool needs the top-level folder so it can read the selected preview images together with their metadata and full-resolution source paths.
+
+### 2. Choose exactly one preview dimension
+
+The page detects every available preview folder, such as:
+
+```text
+preview_96/
+preview_120/
+preview_256/
+```
+
+If more than one exists, the **2. Choose preview folder** menu requires you to choose the exact dimension you want to review.
+
+For example:
+
+```text
+preview_96 (96 × 96)
+```
+
+The review page displays **only that one preview dimension**. It does not mix sizes and does not silently substitute the full-resolution source image when a preview is missing.
+
+If only one preview folder exists, the page selects it automatically.
+
+Changing the selected preview folder clears the current on-page selections. This is intentional: each approval pass belongs to one exact image dimension.
+
+### 3. Review and select candidates
+
+For the selected preview dimension, the page:
+
+- groups candidates by icon name
+- dynamically detects every numbered candidate present for an icon, so `_1` through `_5`, `_10`, or any other generated count are shown
+- displays the complete candidate set in one horizontally scrollable row
+- shows the active review dimension in the status line
+- shows seed and available metadata
+- lets you click one candidate per icon
+- tracks selected versus total icons
+- can jump to the next unselected icon
+- can import an earlier choices JSON after a preview dimension has been selected
+- can copy the current choices JSON to the clipboard
+- can download the choices as JSON
+
+### 4. Export the approval metadata
+
+The exported JSON records the dimension that was actually reviewed:
+
+```json
+{
+  "review_preview_folder": "preview_96",
+  "review_target_size": 96
+}
+```
+
+Each selected icon also records its selected preview path, matching full-resolution source path when available, metadata path, seed, and `repository_target_path` when that field was supplied in the prompt file.
+
+The review tool **does not copy, rename, resize, or modify game assets**. Its only job is to record which candidate you approved at one specific preview dimension so another script, tool, or AI can perform a separate installation step.
+
+To compare 96 × 96 against 120 × 120, review and export one dimension first, then switch the selector and perform a separate review pass for the other dimension.
+
+---
+
+## Recommended first run
+
+After setup:
 
 ```bash
-python3 generate_icons_comfy_v2.py --retry-failed
+cp sample.prompts.json prompts.json
+python3 generate_icons.py --dry-run
+python3 generate_icons.py --check-server
+python3 generate_icons.py --limit 1 --generation-size 768 --require-alpha
 ```
 
-Already completed matching candidates still skip. If a submission response was lost, a generation may have reached the server; check before deliberately retrying. If the process was forcibly killed, a `.runner.lock` may remain. Remove that lock only after confirming that no earlier runner is still active.
+Review the three generated candidates before committing to a large batch.
 
-## Other useful commands
-
-Check the server/model list, with no generation:
+When the setup looks correct:
 
 ```bash
-python3 generate_icons_comfy_v2.py --check-server
+python3 generate_icons.py --generation-size 768 --require-alpha
 ```
 
-Use the old status filter deliberately:
+---
 
-```bash
-python3 generate_icons_comfy_v2.py --only-status pending qa-failed deferred
-```
+## Tests
 
-Supply a different ordered seed set:
+The included tests use a local mock ComfyUI server. They do not run a diffusion model.
 
-```bash
-python3 generate_icons_comfy_v2.py --seeds 101 1012 103
-```
-
-The command-line seed list governs generation. The `generation_seeds` entries in the prompt file document the intended defaults; they do not silently override `--seeds`.
-
-The legacy `--seed 101` option deliberately makes only one candidate per icon. `--limit` always counts icons. `--production-size` is retained as an alias for the local preview size; it does not mark the output production-ready.
-
-For all options:
-
-```bash
-python3 generate_icons_comfy_v2.py --help
-```
-
-## Prompt sources and exact scope
-
-Every one of the 121 entries in the supplied `prompts_full.json` was rewritten. Its filenames, semantic keys, display names, source IDs, repository target paths, prior migration status, recorded master SHA and authored context were preserved. The two example test files were treated as overlapping subsets, not additional targets.
-
-The set represents 127 source IDs because three existing filenames intentionally serve more than one item. Those shared mappings have not been split into newly invented filenames.
-
-The current `GloriousRedLeader/dng` master was checked at commit `b1fab46c2870c8fa9d102db66623c1fcbb1f44a7`, the same commit cited by the supplied manifest. Current Items.json, Abilities.json and the item-image directory were accessed, and selected identities were checked against those files. The supplied per-item `authored_context` remains the principal semantic basis. There was **not** a new exhaustive visual inspection of every repository PNG or a complete reread of every ability tier. Palette, construction and motif details in the new `visual_brief` are art-direction interpretations, not additional claims about gameplay mechanics.
-
-The current item-image directory also contains **61 PNGs absent from the supplied full prompt manifest**. They are listed in `reference/source_audit.json`; they were not silently added to this 363-image batch. This delivery therefore covers the full supplied target manifest, not every image in the repository or every separate ability-upgrade icon.
-
-The old `authored_context` and `migration_status` sometimes describe previously approved artwork. That historical metadata is retained for traceability only. It does not approve new v2 candidates.
-
-## What was tested
-
-The script was syntax-checked and exercised with unit tests and a local mock HTTP server. The mock creates simple test PNGs; it does not invoke diffusion or contact your ComfyUI installation. Tests cover seed mapping, linked prompt replacement, exact filenames, serial requests, missing models, resume, changed-prompt conflicts, server errors, timeout cancellation, and transparency guards.
+Run:
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-See `reference/validation_report.json` for the recorded results. The new prompts have not been rendered on your Mac or visually approved as a set.
+---
 
-## Technical references
+## What this project does not do
 
-- ComfyUI API routes: https://docs.comfy.org/development/comfyui-server/comms_routes
-- RandomNoise implementation: https://github.com/comfyanonymous/ComfyUI/blob/master/comfy_extras/nodes_custom_sampler.py
-- Queue/history/targeted interruption implementation: https://github.com/comfyanonymous/ComfyUI/blob/master/server.py
-- Distilled model: https://huggingface.co/black-forest-labs/FLUX.2-klein-4B
-- Item data at the checked commit: https://github.com/GloriousRedLeader/dng/blob/b1fab46c2870c8fa9d102db66623c1fcbb1f44a7/DNG.Common/Data/Items.json
-- Ability data at the checked commit: https://github.com/GloriousRedLeader/dng/blob/b1fab46c2870c8fa9d102db66623c1fcbb1f44a7/DNG.Common/Data/Abilities.json
+Icon Generator does not:
+
+- download AI models
+- install ComfyUI or custom nodes
+- send prompts to a paid cloud API
+- copy approved icons into a game repository
+- modify paths listed in `repository_target_path`
+- automatically decide which generated icon is best
+
+It generates candidates, records metadata, and gives you a review/approval workflow.
+
+---
+
+## License
+
+Icon Generator is released under the [MIT License](LICENSE).
+
+You may use, modify, redistribute, sublicense, and include this project's code in commercial or closed-source software, subject to the MIT License notice requirements.
+
+Third-party software, ComfyUI custom nodes, and model weights used with this project are **not** relicensed by this repository. ComfyUI, FLUX, Qwen, BiRefNet, and any other external models or dependencies remain subject to their own licenses and terms.
+

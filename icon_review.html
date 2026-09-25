@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DNG Icon Review & Approval</title>
+<title>Icon Review & Approval</title>
 <style>
   :root {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -34,7 +34,7 @@
     gap: 8px;
     align-items: center;
   }
-  button, .file-label, input[type="search"] {
+  button, .file-label, input[type="search"], select {
     border: 1px solid #4a515d;
     background: #252a31;
     color: #fff;
@@ -42,14 +42,14 @@
     padding: 9px 12px;
     font: inherit;
   }
-  button, .file-label { cursor: pointer; }
+  button, .file-label, select { cursor: pointer; }
   button:hover, .file-label:hover { background: #303640; }
   button.primary {
     background: #2867d8;
     border-color: #3f7feb;
   }
   button.primary:hover { background: #3473e2; }
-  button:disabled {
+  button:disabled, select:disabled {
     opacity: .45;
     cursor: not-allowed;
   }
@@ -106,16 +106,17 @@
     font-size: 12px;
   }
   .choice-row {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: flex;
     gap: 12px;
     padding: 12px;
+    overflow-x: auto;
   }
   @media (max-width: 900px) {
-    .choice-row { grid-template-columns: 1fr; }
     #status { width: 100%; margin-left: 0; }
   }
   .choice {
+    flex: 1 0 280px;
+    min-width: 0;
     border: 2px solid #3a4049;
     border-radius: 10px;
     background: #24282e;
@@ -232,12 +233,15 @@
 </head>
 <body>
 <header>
-  <h1>DNG Icon Review & Approval</h1>
+  <h1>Icon Review & Approval</h1>
   <div class="toolbar">
     <label class="file-label">
-      Load generated_icons_v2 folder
+      1. Load generated_icons folder
       <input id="folderInput" type="file" webkitdirectory directory multiple>
     </label>
+    <select id="previewFolderSelect" disabled aria-label="Preview folder to review">
+      <option value="">2. Choose preview folder</option>
+    </select>
     <label class="file-label">
       Import previous choices
       <input id="importInput" type="file" accept=".json,application/json">
@@ -250,15 +254,17 @@
     <span id="status">No folder loaded</span>
   </div>
   <div class="help">
-    Select the <strong>generated_icons_v2</strong> folder produced by the generator.
-    Click one candidate image per icon to approve it. This page never copies or modifies game assets.
-    Exported JSON contains the selected source-relative path and repository target path (when present in metadata)
-    so another AI/tool can perform the copy later.
+    <strong>Step 1:</strong> load the top-level <code>generated_icons</code> folder.
+    <strong>Step 2:</strong> choose the exact <code>preview_&lt;size&gt;</code> folder you want to review, such as <code>preview_96</code> or <code>preview_120</code>.
+    The page reviews <strong>one dimension at a time</strong> and never mixes preview sizes or silently falls back to the full-resolution source.
+    If only one preview folder exists, it is selected automatically.
+    Then click one candidate image per icon to approve it. This page never copies or modifies game assets.
+    Exported JSON records the selected preview folder, selected candidate path, full-resolution source path when present, and repository target path when present in metadata.
   </div>
 </header>
 
 <main>
-  <div id="empty">Load your <code>generated_icons_v2</code> folder to begin.</div>
+  <div id="empty">Load your <code>generated_icons</code> folder, then choose the exact preview dimension you want to review.</div>
   <div id="rows"></div>
 </main>
 
@@ -276,6 +282,7 @@
   "use strict";
 
   const folderInput = document.getElementById("folderInput");
+  const previewFolderSelect = document.getElementById("previewFolderSelect");
   const importInput = document.getElementById("importInput");
   const searchInput = document.getElementById("search");
   const rowsEl = document.getElementById("rows");
@@ -294,7 +301,9 @@
   let fileIndex = new Map();
   let metadataIndex = new Map();
   let selections = new Map();
-  let rootFolderName = "generated_icons_v2";
+  let previewFolders = [];
+  let selectedPreviewFolder = "";
+  let rootFolderName = "generated_icons";
 
   function normalizePath(file) {
     return (file.webkitRelativePath || file.name).replaceAll("\\", "/");
@@ -329,6 +338,8 @@
     metadataIndex = new Map();
     selections = new Map();
     groups = [];
+    previewFolders = [];
+    selectedPreviewFolder = "";
 
     const all = [...files];
     if (!all.length) return;
@@ -353,25 +364,66 @@
       }
     }));
 
-    const sourceCandidates = [];
+    previewFolders = [...new Set(
+      [...fileIndex.keys()]
+        .map(path => path.split("/")[0])
+        .filter(folder => /^preview_\d+$/.test(folder))
+    )].sort((a, b) => Number(a.split("_")[1]) - Number(b.split("_")[1]));
+
+    previewFolderSelect.innerHTML = '<option value="">2. Choose preview folder</option>';
+    for (const folder of previewFolders) {
+      const option = document.createElement("option");
+      const size = folder.split("_")[1];
+      option.value = folder;
+      option.textContent = `${folder} (${size} × ${size})`;
+      previewFolderSelect.appendChild(option);
+    }
+
+    if (!previewFolders.length) {
+      previewFolderSelect.disabled = true;
+      setControls(false);
+      rowsEl.innerHTML = "";
+      emptyEl.style.display = "block";
+      emptyEl.innerHTML = 'No <code>preview_&lt;size&gt;</code> folders were found. Generate review images first, then reload <code>generated_icons</code>.';
+      statusEl.textContent = "No preview folders found";
+      return;
+    }
+
+    previewFolderSelect.disabled = false;
+
+    if (previewFolders.length === 1) {
+      previewFolderSelect.value = previewFolders[0];
+      selectPreviewFolder(previewFolders[0], false);
+      return;
+    }
+
+    setControls(false);
+    rowsEl.innerHTML = "";
+    emptyEl.style.display = "block";
+    emptyEl.innerHTML = `Found ${previewFolders.length} preview dimensions. Choose exactly one from the <strong>2. Choose preview folder</strong> menu above.`;
+    statusEl.textContent = `${previewFolders.length} preview folders found`;
+  }
+
+  function selectPreviewFolder(folder, clearExistingSelections = true) {
+    if (!previewFolders.includes(folder)) return;
+
+    cleanupObjectUrls();
+    groups = [];
+    selectedPreviewFolder = folder;
+    if (clearExistingSelections) selections.clear();
+
+    const prefix = `${folder}/`;
+    const previewCandidates = [];
+
     for (const [rel, file] of fileIndex.entries()) {
-      if (rel.startsWith("source/") && rel.toLowerCase().endsWith(".png")) {
-        sourceCandidates.push({ rel, file });
+      if (rel.startsWith(prefix) && rel.toLowerCase().endsWith(".png")) {
+        previewCandidates.push({ rel, file });
       }
     }
 
-    const previewFolders = [...new Set(
-      [...fileIndex.keys()]
-        .map(p => p.split("/")[0])
-        .filter(p => /^preview_\d+$/.test(p))
-    )];
-
-    const previewFolder = previewFolders
-      .sort((a, b) => Number(a.split("_")[1]) - Number(b.split("_")[1]))[0] || null;
-
     const byBase = new Map();
 
-    for (const item of sourceCandidates) {
+    for (const item of previewCandidates) {
       const candidateStem = stem(item.rel);
       const match = candidateStem.match(/^(.*)_(\d+)$/);
       if (!match) continue;
@@ -380,22 +432,17 @@
       const variant = Number(match[2]);
       const metaRec = metadataIndex.get(candidateStem);
       const meta = metaRec?.data || null;
-
-      const previewRel = previewFolder
-        ? `${previewFolder}/${candidateStem}.png`
-        : null;
-      const previewFile = previewRel ? fileIndex.get(previewRel) : null;
-      const displayFile = previewFile || item.file;
-      const displayUrl = URL.createObjectURL(displayFile);
+      const sourceRel = `source/${candidateStem}.png`;
+      const sourceFile = fileIndex.get(sourceRel) || null;
 
       const candidate = {
         base,
         variant,
         candidateStem,
-        sourceRel: item.rel,
-        previewRel: previewFile ? previewRel : null,
+        sourceRel: sourceFile ? sourceRel : null,
+        previewRel: item.rel,
         metadataRel: metaRec?.rel || `metadata/${candidateStem}.json`,
-        displayUrl,
+        displayUrl: URL.createObjectURL(item.file),
         meta
       };
 
@@ -419,10 +466,18 @@
 
     groups.sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }));
 
+    if (!groups.length) {
+      setControls(false);
+      rowsEl.innerHTML = "";
+      emptyEl.style.display = "block";
+      emptyEl.innerHTML = `No numbered PNG candidates were found inside <code>${escapeHtml(folder)}</code>.`;
+      statusEl.textContent = `${folder}: no candidates`;
+      return;
+    }
+
     render();
     setControls(true);
   }
-
   function prettify(base) {
     return base
       .split("_")
@@ -472,28 +527,17 @@
             <div class="icon-title">${escapeHtml(group.displayName)}</div>
             <div class="icon-sub">${escapeHtml(group.originalFilename)}</div>
           </div>
-          <div class="icon-sub">${escapeHtml(group.semanticKey || "")}</div>
+          <div class="icon-sub">${group.candidates.length} candidate${group.candidates.length === 1 ? "" : "s"}${group.semanticKey ? " · " + escapeHtml(group.semanticKey) : ""}</div>
         </div>
         <div class="choice-row"></div>
       `;
 
       const choiceRow = row.querySelector(".choice-row");
 
-      for (let variant = 1; variant <= 3; variant++) {
-        const c = candidateForVariant(group, variant);
+      for (const c of group.candidates) {
+        const variant = c.variant;
         const card = document.createElement("div");
-        card.className = "choice" + (selectedVariant === variant ? " selected" : "") + (!c ? " missing" : "");
-
-        if (!c) {
-          card.innerHTML = `
-            <div class="choice-top">
-              <span class="variant">Option ${variant}</span>
-            </div>
-            <div class="filename">Missing candidate</div>
-          `;
-          choiceRow.appendChild(card);
-          continue;
-        }
+        card.className = "choice" + (selectedVariant === variant ? " selected" : "");
 
         const seed = c.meta?.seed ?? "";
         const phase = c.meta?.phase ?? "";
@@ -528,7 +572,8 @@
   function updateStatus() {
     const total = groups.length;
     const selected = [...selections.keys()].filter(base => groups.some(g => g.base === base)).length;
-    statusEl.textContent = `${selected} / ${total} selected`;
+    const size = selectedPreviewFolder ? selectedPreviewFolder.replace("preview_", "") : "?";
+    statusEl.textContent = `${selected} / ${total} selected · ${size}×${size}`;
   }
 
   function selectedPayload() {
@@ -560,10 +605,16 @@
       });
     }
 
+    const targetSize = selectedPreviewFolder
+      ? Number(selectedPreviewFolder.replace("preview_", ""))
+      : null;
+
     return {
-      schema: "dng_icon_review_choices_v1",
+      schema: "icon_review_choices_v1",
       generated_root_folder: rootFolderName,
-      note: "Review metadata only. This file does not copy or modify game assets.",
+      review_preview_folder: selectedPreviewFolder || null,
+      review_target_size: Number.isFinite(targetSize) ? targetSize : null,
+      note: "Review metadata only. This file does not copy or modify game assets. All selections in this export were reviewed from one preview dimension.",
       selected_count: selected.length,
       total_icon_groups_loaded: groups.length,
       selections: selected
@@ -656,6 +707,22 @@
   }
 
   folderInput.addEventListener("change", () => loadFolder(folderInput.files));
+  previewFolderSelect.addEventListener("change", () => {
+    const folder = previewFolderSelect.value;
+    if (!folder) {
+      cleanupObjectUrls();
+      groups = [];
+      selections.clear();
+      selectedPreviewFolder = "";
+      rowsEl.innerHTML = "";
+      emptyEl.style.display = "block";
+      emptyEl.innerHTML = "Choose one preview folder to review.";
+      setControls(false);
+      statusEl.textContent = "Choose a preview folder";
+      return;
+    }
+    selectPreviewFolder(folder, true);
+  });
   importInput.addEventListener("change", () => {
     const file = importInput.files?.[0];
     if (file) importChoices(file);
