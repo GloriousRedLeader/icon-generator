@@ -344,7 +344,7 @@ class ComfyClient:
             fields = {}
             for group in ("required", "optional"):
                 fields.update(info[cls].get("input", {}).get(group, {}))
-            for field in ("unet_name", "clip_name", "vae_name"):
+            for field in ("unet_name", "clip_name", "vae_name", "bg_removal_name"):
                 if field not in node["inputs"]:
                     continue
                 value = node["inputs"][field]
