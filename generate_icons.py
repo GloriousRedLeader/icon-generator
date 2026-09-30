@@ -10,7 +10,7 @@ Run beside prompts.json:
     python3 generate_icons.py
 
 No reference images, model downloads, game-asset writes, or cloud API keys are required by this runner.
-The supplied workflow.json performs BiRefNet background removal and alpha joining.
+The default workflow.json preserves the background; workflow-no-background.json performs BiRefNet removal and alpha joining.
 The only third-party Python dependency used by the runner is Pillow.
 """
 from __future__ import annotations
@@ -489,8 +489,6 @@ def candidate_paths(root: Path, name: str, target_size: int) -> dict[str, Path]:
 
 def finalize_candidate(meta: dict[str, Any], paths: dict[str, Path], args: argparse.Namespace) -> dict[str, Any]:
     source_info = inspect_image(paths["source"], args.generation_size)
-    if args.require_alpha and not source_info["real_transparency"]:
-        raise IconError("Generated source is opaque. --require-alpha requires genuine transparent pixels from the external API workflow.")
     make_preview(paths["source"], paths["preview"], args.target_size)
     meta.update({"phase": "complete", "status": "rendered-unreviewed", "qa_status": "needs-visual-review", "finished_at": utc_now(), "source": source_info, "preview": inspect_image(paths["preview"], args.target_size), "source_sha256": sha256_file(paths["source"]), "preview_sha256": sha256_file(paths["preview"]), "source_path": str(paths["source"]), "preview_path": str(paths["preview"])})
     save_json(paths["meta"], meta)
@@ -531,8 +529,6 @@ def generate_candidate(args: argparse.Namespace, client: ComfyClient, template: 
             if sha256_file(paths["source"]) != old.get("source_sha256"):
                 raise IconError(f"{name}: source hash changed. Refusing to treat this edited file as the recorded generated source.")
             if old.get("phase") == "complete" and paths["preview"].exists() and sha256_file(paths["preview"]) == old.get("preview_sha256"):
-                if args.require_alpha and not old.get("source", {}).get("real_transparency"):
-                    raise IconError(f"{name} is opaque; it cannot pass --require-alpha.")
                 print(f"  SKIP verified existing candidate: {name}", flush=True)
                 return {**old, "action": "skipped-existing"}
             result = finalize_candidate(old, paths, args)
@@ -641,7 +637,6 @@ def print_argument_summary(args: argparse.Namespace) -> None:
         ("--generation-size", args.generation_size, "Model generation size in pixels"),
         ("--target-size", args.target_size, "Local review image size in pixels"),
         ("--overwrite", args.overwrite, "Replace matching existing candidates"),
-        ("--require-alpha", args.require_alpha, "Require real transparent pixels"),
         ("--dry-run", args.dry_run, "Validate plan without generating"),
         ("--check-server", args.check_server, "Validate ComfyUI without generating"),
         ("output directory", args.output_root, "Fixed generated output folder"),
@@ -658,7 +653,7 @@ def print_argument_summary(args: argparse.Namespace) -> None:
     print()
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate three independent FLUX cartoon candidates per icon; never install into game assets.")
+    parser = argparse.ArgumentParser(allow_abbrev=False, description="Generate three independent FLUX cartoon candidates per icon; never install into game assets.")
     parser.add_argument("prompt_file", nargs="?", type=Path, default=SCRIPT_DIR / "prompts.json", help="Prompt JSON array; defaults to prompts.json beside this script.")
     parser.add_argument("--workflow", type=Path, default=DEFAULT_WORKFLOW, help="ComfyUI API-format workflow JSON. Default: workflow.json beside this script.")
     parser.add_argument("--comfy-url", default=DEFAULT_COMFY_URL)
@@ -668,7 +663,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--generation-size", dest="generation_size", type=int, default=1024, help="Square pixel size sent to the image model. Default: 1024.")
     parser.add_argument("--target-size", dest="target_size", type=int, default=96, help="Square pixel size of the local review image. Default: 96.")
     parser.add_argument("--overwrite", action="store_true", help="Explicitly regenerate and replace selected candidate files; never touches repository paths.")
-    parser.add_argument("--require-alpha", action="store_true", help="Require real transparent pixels. Recommended with the supplied BiRefNet + JoinImageWithAlpha workflow.")
     parser.add_argument("--dry-run", action="store_true", help="Validate and print the plan only; no server connection and no generation.")
     parser.add_argument("--check-server", action="store_true", help="Validate files and installed server models only; no generation.")
     parser.add_argument("--version", action="version", version=VERSION)

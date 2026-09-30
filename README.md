@@ -4,9 +4,7 @@ Icon Generator is a local batch tool for creating multiple game-icon candidates 
 
 ## Why This Exists
 
-This project exists because asking Gemini, ChatGPT, or Claude to produce a hundred consistently sized game icons is apparently the computational equivalent of asking three extremely confident interns to assemble a nuclear reactor from a Pinterest board. They can generate one beautiful image, explain image dimensions at tremendous length, and then immediately forget both the dimensions and the image. Ask for a large batch and, somewhere around icon 17, filenames mutate, aspect ratios wander off, transparency becomes a philosophical question, and the entire operation develops the administrative stability of a collapsing government. Icon Generator was created so the computer can do the same boring thing correctly hundreds of times without needing to be reminded what “120×120” means.
-
-The current default review target is `96 × 96`; the line above is retained as the historical joke that caused this project to exist.
+This project exists because asking Gemini, ChatGPT, or Claude to produce a hundred consistently sized game icons is the computational equivalent of asking three extremely confident interns to assemble a nuclear reactor from a Pinterest board. They can generate one beautiful image, explain image dimensions at tremendous length, and then immediately forget both the dimensions and the image. Ask for a large batch and, somewhere around icon 17, filenames mutate, aspect ratios wander off, transparency becomes a philosophical question, and the entire operation develops the administrative stability of a collapsing government. Icon Generator was created so the computer can do the same boring thing correctly hundreds of times without needing to be reminded what “120×120” means.
 
 It is designed for workflows where you have a JSON list of item names and image prompts and want a repeatable way to:
 
@@ -24,7 +22,8 @@ The tool does **not** copy anything into your game's asset folders. Generation a
 ```text
 icon-generator/
 ├── generate_icons.py       Main batch generator
-├── workflow.json           ComfyUI API-format workflow
+├── workflow.json           Default workflow, preserves the background
+├── workflow-no-background.json  Optional BiRefNet cutout workflow
 ├── sample.prompts.json     Three fictional example prompts
 ├── icon_review.html        Standalone review / approval tool
 ├── tests/
@@ -79,7 +78,7 @@ On Apple Silicon macOS, the simplest supported route is Comfy Desktop:
 - [Official Comfy Desktop for macOS installation guide](https://docs.comfy.org/installation/desktop/macos)
 - [Official ComfyUI update guide](https://docs.comfy.org/installation/update_comfyui)
 
-Use a current ComfyUI build. The supplied workflow uses current core FLUX.2 and BiRefNet background-removal nodes.
+Use a current ComfyUI build. The supplied workflow uses current core FLUX.2 nodes; the optional cutout workflow also uses BiRefNet background-removal nodes.
 
 ### 2. Clone Icon Generator
 
@@ -110,7 +109,7 @@ Edit `prompts.json` and replace the fictional examples with your own items and p
 
 ### 5. Install the workflow models
 
-Install the four files listed in the next section in the exact ComfyUI model folders shown there, then restart ComfyUI.
+Install the three generation files listed in the next section (plus BiRefNet if using `workflow-no-background.json`) in the exact ComfyUI model folders shown there, then restart ComfyUI.
 
 ### 6. Validate before generating
 
@@ -120,7 +119,7 @@ With ComfyUI running:
 python3 generate_icons.py --check-server
 ```
 
-This verifies that the workflow node classes and all four model filenames referenced by `workflow.json` are visible to ComfyUI, and that the ComfyUI queue is idle.
+This verifies that the workflow node classes and all model filenames referenced by the selected workflow are visible to ComfyUI, and that the ComfyUI queue is idle.
 
 You can also validate the prompt file and generation plan without contacting ComfyUI:
 
@@ -140,7 +139,7 @@ http://127.0.0.1:8188
 
 ### Required model files
 
-The committed `workflow.json` requires exactly these model filenames:
+The default `workflow.json` requires the first three files. `workflow-no-background.json` additionally requires BiRefNet:
 
 | Model file | Purpose | ComfyUI model folder | Official download |
 | --- | --- | --- | --- |
@@ -194,7 +193,7 @@ It does **not** use the FP8 variant. The non-FP8 distilled model is the tested p
 
 ### Required nodes
 
-The workflow uses these ComfyUI node classes in addition to the normal FLUX.2 generation nodes:
+The optional `workflow-no-background.json` uses these ComfyUI node classes in addition to the normal FLUX.2 generation nodes:
 
 - `RemoveBackground`
 - `LoadBackgroundRemovalModel`
@@ -250,7 +249,7 @@ Example:
     "semantic_key": "ui.item.starfall_sabre",
     "display_name": "Starfall Sabre",
     "repository_target_path": "Assets/Icons/Items/starfall_sabre.png",
-    "positive_prompt": "A hand-painted cartoon fantasy RPG inventory icon of one elegant curved steel sabre on a clean white background.",
+    "positive_prompt": "A hand-painted cartoon fantasy RPG inventory icon of one elegant curved steel sabre against a simple cartoon background of muted lavender hills and a soft blue sky, with large flat shapes and low contrast so the sabre reads clearly at 96 x 96 on mobile.",
     "negative_prompt": ""
   }
 ]
@@ -368,17 +367,25 @@ This does not change the model generation resolution. It changes the resized rev
 
 Changing only `--target-size` does not require regenerating the AI source image. The runner reuses the existing generated source and rebuilds the derived review image at the new size.
 
-### Require transparency
+### Choose whether to keep the background
 
-The supplied workflow performs background removal and joins an alpha channel.
-
-To make the runner reject a result that does not contain real transparent pixels:
+The default `workflow.json` preserves the generated background:
 
 ```bash
-python3 generate_icons.py --require-alpha
+python3 generate_icons.py
 ```
 
-This flag is a validation check. It does not run an additional background-removal pass.
+For transparent cutouts, select the original BiRefNet workflow:
+
+```bash
+python3 generate_icons.py --workflow workflow-no-background.json
+```
+
+There is no alpha flag. Background removal is controlled by the selected workflow; transparency information is still recorded in candidate metadata.
+
+The sample prompts describe simple cartoon scenery with broad shapes and low contrast for mobile icons. BiRefNet receives the generated image and predicts a foreground mask; it does not receive the text prompt and is not a black/white color-key operation. Prompts influence how easy the subject is to separate, while the removal nodes create the transparent output. Illustrated backgrounds can be removed, but retained scenery, lost item details, and imperfect edges need visual review.
+
+To compare these workflows, use the same prompts, seeds, and generation size. Their generation nodes are identical. Save the first run's output separately before running the second workflow: candidates use the same filenames, and switching workflows changes the recipe fingerprint. `--overwrite` deliberately replaces existing candidates.
 
 ### Use a different ComfyUI address
 
@@ -407,7 +414,6 @@ python3 generate_icons.py --workflow /path/to/workflow.json
 | `--generation-size` | Square resolution sent to the image model. Default 1024. |
 | `--target-size` | Square size of the local review image. Default 96. |
 | `--overwrite` | Deliberately regenerate and replace selected existing candidates. |
-| `--require-alpha` | Fail a candidate if the downloaded PNG has no real transparency. |
 | `--dry-run` | Validate and print the generation plan without contacting ComfyUI. |
 | `--check-server` | Validate the workflow, required ComfyUI nodes, models, and queue without generating. |
 | `--version` | Print the runner version. |
@@ -589,7 +595,7 @@ After setup:
 cp sample.prompts.json prompts.json
 python3 generate_icons.py --dry-run
 python3 generate_icons.py --check-server
-python3 generate_icons.py --limit 1 --generation-size 768 --require-alpha
+python3 generate_icons.py --limit 1 --generation-size 768
 ```
 
 Review the three generated candidates before committing to a large batch.
@@ -597,7 +603,7 @@ Review the three generated candidates before committing to a large batch.
 When the setup looks correct:
 
 ```bash
-python3 generate_icons.py --generation-size 768 --require-alpha
+python3 generate_icons.py --generation-size 768
 ```
 
 ---
