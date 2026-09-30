@@ -75,6 +75,8 @@ class MockComfy:
                         ("VAELoader", "vae_name", "flux2-vae.safetensors"),
                         ("LoadBackgroundRemovalModel", "bg_removal_name", "birefnet.safetensors"),
                     ):
+                        if cls not in info:
+                            continue
                         info[cls]["input"]["required"][field] = [
                             [value] if not owner.missing_model else []
                         ]
@@ -216,6 +218,7 @@ class UnitTests(unittest.TestCase):
             ["--poll-seconds", "0.1"],
             ["--retry-failed"],
             ["--allow-nonstandard-workflow"],
+            ["--require-alpha"],
         ]
         with contextlib.redirect_stderr(io.StringIO()):
             for argv in removed:
@@ -231,7 +234,6 @@ class UnitTests(unittest.TestCase):
                 "768",
                 "--target-size",
                 "96",
-                "--require-alpha",
                 "--limit",
                 "1",
             ]
@@ -252,14 +254,23 @@ class UnitTests(unittest.TestCase):
         self.assertIn("--target-size", text)
         self.assertIn("Local review image size in pixels", text)
         self.assertIn("96", text)
-        self.assertIn("--require-alpha", text)
-        self.assertIn("true", text)
+        self.assertNotIn("--require-alpha", text)
         self.assertIn("output directory", text)
         self.assertNotIn("--only-status", text)
         self.assertNotIn("--poll-seconds", text)
         self.assertNotIn("--retry-failed", text)
         self.assertNotIn("--allow-nonstandard-workflow", text)
         self.assertIn("-" * 72, text)
+
+    def test_background_workflows_share_generation_nodes(self):
+        cutout = r.validate_graph(r.load_json(ROOT / "workflow-no-background.json"))
+        r.discover_nodes(cutout)
+        self.assertEqual(TEST_WORKFLOW["16"]["inputs"]["images"], ["15", 0])
+        self.assertEqual(cutout["16"]["inputs"]["images"], ["22:20", 0])
+        self.assertNotIn("RemoveBackground", {n["class_type"] for n in TEST_WORKFLOW.values()})
+        for node_id in TEST_WORKFLOW:
+            if node_id not in {"6", "16"}:
+                self.assertEqual(TEST_WORKFLOW[node_id], cutout[node_id])
 
     def test_flux_topology_not_titles(self):
         for node in self.graph.values():
@@ -546,8 +557,8 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(self.run_script(["--check-server"]), 0)
         self.assertEqual(self.server.graphs, [])
 
-    def test_require_alpha_accepts_transparent_output(self):
-        self.assertEqual(self.run_script(["--require-alpha"]), 0)
+    def test_accepts_transparent_output_without_alpha_flag(self):
+        self.assertEqual(self.run_script(), 0)
         self.assertEqual(len(self.server.graphs), 3)
 
     def test_pending_cancel_only_own_id(self):

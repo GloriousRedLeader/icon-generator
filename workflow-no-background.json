@@ -49,7 +49,7 @@
   },
   "6": {
     "inputs": {
-      "value": "A hand-painted cartoon fantasy RPG inventory icon of one bronze compass with a dark leather strap, confident dark outlines, broad highlights, and a chunky readable silhouette. Center the complete object with clear space around every edge against a simple cartoon meadow background with muted green shapes and a soft blue sky. Keep the background low contrast with large flat color areas and no tiny details, so the compass reads clearly at 96 x 96 on a mobile screen. No hands, character, text, border, or UI frame."
+      "value": "A hand-painted cartoon fantasy RPG inventory icon of one simple bronze compass with a dark leather strap, clean dark outlines, broad painted highlights, and a chunky readable silhouette. Center the complete object on a plain white background with generous clear space around every edge. No hands, character, scenery, text, border, or additional objects."
     },
     "class_type": "PrimitiveStringMultiline",
     "_meta": {
@@ -206,13 +206,66 @@
     "inputs": {
       "filename_prefix": "icon_generator/candidate",
       "images": [
-        "15",
+        "22:20",
         0
       ]
     },
     "class_type": "SaveImage",
     "_meta": {
       "title": "RESULT - Save Image"
+    }
+  },
+  "22:17": {
+    "inputs": {
+      "bg_removal_model": [
+        "22:18",
+        0
+      ],
+      "image": [
+        "15",
+        0
+      ]
+    },
+    "class_type": "RemoveBackground",
+    "_meta": {
+      "title": "Remove Background"
+    }
+  },
+  "22:18": {
+    "inputs": {
+      "bg_removal_name": "birefnet.safetensors"
+    },
+    "class_type": "LoadBackgroundRemovalModel",
+    "_meta": {
+      "title": "Load Background Removal Model"
+    }
+  },
+  "22:19": {
+    "inputs": {
+      "mask": [
+        "22:17",
+        0
+      ]
+    },
+    "class_type": "InvertMask",
+    "_meta": {
+      "title": "Invert Mask"
+    }
+  },
+  "22:20": {
+    "inputs": {
+      "image": [
+        "15",
+        0
+      ],
+      "alpha": [
+        "22:19",
+        0
+      ]
+    },
+    "class_type": "JoinImageWithAlpha",
+    "_meta": {
+      "title": "Join Image with Alpha"
     }
   }
 }
